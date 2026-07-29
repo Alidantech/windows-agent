@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from urllib.parse import urlparse
 
 from agent_os.models import AgentDecision
 
@@ -50,5 +51,11 @@ class SafetyPolicy:
             sensitive_markers = ("password=", "api_key=", "secret=", "bearer ")
             if any(marker in lowered for marker in sensitive_markers):
                 return SafetyAssessment(False, False, "Refusing to type text that resembles a secret.")
+
+        if decision.action == "open_url" and decision.url:
+            normalized = decision.url if "://" in decision.url else f"https://{decision.url}"
+            parsed = urlparse(normalized)
+            if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+                return SafetyAssessment(False, False, "Only valid HTTP(S) URLs may be opened.")
 
         return SafetyAssessment(True, False, "Allowed by local policy.")

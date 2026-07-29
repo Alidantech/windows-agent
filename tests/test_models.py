@@ -18,3 +18,18 @@ def test_signature_is_stable() -> None:
     first = AgentDecision(action="click", x=500, y=500, reason="a")
     second = AgentDecision(action="click", x=500, y=500, reason="different wording")
     assert first.signature() == second.signature()
+
+
+def test_open_url_requires_url() -> None:
+    with pytest.raises(ValidationError):
+        AgentDecision(action="open_url", reason="Open website")
+
+
+def test_open_url_accepts_optional_browser() -> None:
+    decision = AgentDecision(
+        action="open_url",
+        url="https://chatgpt.com",
+        browser="chrome",
+        reason="Open ChatGPT in Chrome",
+    )
+    assert decision.browser == "chrome"

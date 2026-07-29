@@ -1,5 +1,5 @@
 # Only aliases in this file may be launched by the agent by default.
-# Use a list for executables and arguments. Use `uri` for Windows URI handlers.
+# `candidates` lets Agent OS find apps that are installed but not present on PATH.
 notepad:
   command: ["notepad.exe"]
 calculator:
@@ -16,7 +16,21 @@ command_prompt:
   command: ["cmd.exe"]
 edge:
   command: ["msedge.exe"]
+  candidates:
+    - "%PROGRAMFILES(X86)%\\Microsoft\\Edge\\Application\\msedge.exe"
+    - "%PROGRAMFILES%\\Microsoft\\Edge\\Application\\msedge.exe"
+    - "%LOCALAPPDATA%\\Microsoft\\Edge\\Application\\msedge.exe"
 chrome:
   command: ["chrome.exe"]
+  candidates:
+    - "%PROGRAMFILES%\\Google\\Chrome\\Application\\chrome.exe"
+    - "%PROGRAMFILES(X86)%\\Google\\Chrome\\Application\\chrome.exe"
+    - "%LOCALAPPDATA%\\Google\\Chrome\\Application\\chrome.exe"
+brave:
+  command: ["brave.exe"]
+  candidates:
+    - "%PROGRAMFILES%\\BraveSoftware\\Brave-Browser\\Application\\brave.exe"
+    - "%PROGRAMFILES(X86)%\\BraveSoftware\\Brave-Browser\\Application\\brave.exe"
+    - "%LOCALAPPDATA%\\BraveSoftware\\Brave-Browser\\Application\\brave.exe"
 paint:
   command: ["mspaint.exe"]

@@ -12,3 +12,11 @@ Prefer Windows semantic controls in this order:
 5. Normalized coordinate clicks only when no semantic method exists.
 
 After every action, inspect the new screenshot. Do not assume the interface changed.
+
+## Controller-window rule
+
+The terminal running Agent OS is a protected controller. When `active-window` resolves to that terminal, Agent OS temporarily observes the desktop so it can activate the real destination. Never type a user's application message into the controller console.
+
+## Website rule
+
+Use `open_url` for domain/URL tasks instead of searching the Start menu or guessing browser paths. A native app named like a website does not satisfy a request to visit the website.

@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 import os
+import re
+import shutil
 import subprocess
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 
 import yaml
 
@@ -25,19 +28,88 @@ class AppLauncher:
     def available_aliases(self) -> list[str]:
         return sorted(self.aliases)
 
+    @staticmethod
+    def _expand_windows_vars(value: str) -> str:
+        def replace(match: re.Match[str]) -> str:
+            return os.environ.get(match.group(1), match.group(0))
+
+        expanded = re.sub(r"%([^%]+)%", replace, value)
+        return os.path.expandvars(os.path.expanduser(expanded))
+
+    @staticmethod
+    def _registry_app_path(executable: str) -> str | None:
+        if os.name != "nt":
+            return None
+        try:
+            import winreg
+        except ImportError:
+            return None
+
+        subkey = rf"SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\{executable}"
+        locations = (
+            (winreg.HKEY_CURRENT_USER, subkey),
+            (winreg.HKEY_LOCAL_MACHINE, subkey),
+            (winreg.HKEY_LOCAL_MACHINE, rf"SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\App Paths\{executable}"),
+        )
+        for hive, key_name in locations:
+            try:
+                with winreg.OpenKey(hive, key_name) as key:
+                    value, _ = winreg.QueryValueEx(key, None)
+                    if value and Path(str(value)).exists():
+                        return str(value)
+            except OSError:
+                continue
+        return None
+
+    def _resolve_executable(self, executable: str, candidates: list[str] | None = None) -> str:
+        expanded = self._expand_windows_vars(executable)
+        direct = Path(expanded)
+        if direct.is_absolute() and direct.exists():
+            return str(direct)
+
+        found = shutil.which(expanded)
+        if found:
+            return found
+
+        registry_path = self._registry_app_path(Path(expanded).name)
+        if registry_path:
+            return registry_path
+
+        for candidate in candidates or []:
+            candidate_path = Path(self._expand_windows_vars(str(candidate)))
+            if candidate_path.exists():
+                return str(candidate_path)
+
+        raise RuntimeError(
+            f"Could not locate {executable!r}. Add its installed path under candidates in {self.aliases_file}."
+        )
+
+    def _command_for_alias(self, key: str, extra_args: list[str] | None = None) -> list[str]:
+        definition = self.aliases.get(key)
+        if not definition:
+            raise RuntimeError(f"App alias {key!r} is not defined in {self.aliases_file}.")
+
+        command = definition.get("command")
+        if not isinstance(command, list) or not command:
+            raise RuntimeError(f"App alias {key!r} does not define a command.")
+
+        candidates = definition.get("candidates")
+        candidate_list = [str(item) for item in candidates] if isinstance(candidates, list) else []
+        executable = self._resolve_executable(str(command[0]), candidate_list)
+        args = [self._expand_windows_vars(str(part)) for part in command[1:]]
+        return [executable, *args, *(extra_args or [])]
+
     def launch(self, app_name: str) -> str:
         key = app_name.strip().lower()
         definition = self.aliases.get(key)
         if definition:
             uri = definition.get("uri")
-            command = definition.get("command")
             if uri:
                 os.startfile(str(uri))  # type: ignore[attr-defined]
                 return f"Opened URI alias {key}: {uri}"
-            if isinstance(command, list) and command:
-                subprocess.Popen([str(part) for part in command], shell=False)
-                return f"Launched app alias {key}: {command[0]}"
-            raise RuntimeError(f"Invalid definition for app alias {key!r}")
+            command = self._command_for_alias(key)
+            subprocess.Popen(command, shell=False)
+            return f"Launched app alias {key}: {command[0]}"
 
         if not self.allow_unlisted:
             raise RuntimeError(
@@ -49,5 +121,24 @@ class AppLauncher:
             os.startfile(str(path.resolve()))  # type: ignore[attr-defined]
             return f"Opened {path.resolve()}"
 
-        subprocess.Popen([app_name], shell=False)
-        return f"Launched unlisted executable: {app_name}"
+        executable = self._resolve_executable(app_name)
+        subprocess.Popen([executable], shell=False)
+        return f"Launched unlisted executable: {executable}"
+
+    def open_url(self, url: str, browser: str | None = None) -> str:
+        normalized = url.strip()
+        if "://" not in normalized:
+            normalized = f"https://{normalized}"
+
+        parsed = urlparse(normalized)
+        if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+            raise RuntimeError("Only valid http:// and https:// URLs may be opened.")
+
+        if browser:
+            key = browser.strip().lower()
+            command = self._command_for_alias(key, [normalized])
+            subprocess.Popen(command, shell=False)
+            return f"Opened {normalized} in {key}."
+
+        os.startfile(normalized)  # type: ignore[attr-defined]
+        return f"Opened {normalized} in the default browser."

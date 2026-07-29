@@ -1,12 +1,15 @@
 # Gemini Windows Agent
 
+**Version 0.2.0** — protected controller window, direct URL opening, robust browser discovery, visible observation status, and clean interactive-console shutdown.
+
 A supervised Windows desktop automation project built for real use and debugging. It replaces a fragile screenshot/click loop with a structured agent that can:
 
 - accept one task or run an interactive task console;
 - save every screenshot, action overlay, model response, and execution result;
 - target one active window, one monitor, a named window, or the entire desktop;
 - inspect Windows UI Automation controls and click labeled elements;
-- open approved Windows applications using aliases;
+- open approved Windows applications using aliases and discover common browser install paths;
+- open websites directly with a safe `open_url` tool;
 - use semantic keyboard actions before guessing pixels;
 - detect repeated actions and stop endless loops;
 - ask the user for missing information or recovery guidance;
@@ -14,6 +17,12 @@ A supervised Windows desktop automation project built for real use and debugging
 - keep API keys out of logs and source control.
 
 This is a **supervised automation tool**, not a safe autonomous administrator. Use it on reversible tasks, keep the emergency stop available, and do not use it for passwords, payments, critical decisions, or destructive system changes.
+
+## What was happening in the interactive-console failure
+
+`agent-os chat` runs inside Windows Terminal. Asking it to use `active-window` while the task prompt had focus meant the first screenshot could be the Agent OS terminal itself. The model then pasted application text into its own `Task:` prompt, and Enter submitted that pasted text as another task. This was foreground automation against the wrong target—not background work.
+
+Version 0.2.0 protects the controller terminal. When it owns the foreground and the task is not explicitly a terminal task, `active-window` temporarily captures the whole desktop so the model can activate the intended app. Typing, clicking, scrolling, and submission into the controller are locally blocked.
 
 ## Why your first script got stuck
 
@@ -131,6 +140,7 @@ Then enter tasks such as:
 ```text
 Open Notepad and type Hello from Agent OS
 Open Calculator and calculate 125 * 8
+Visit chatgpt.com in Chrome
 Activate the browser window containing GitHub
 ```
 
@@ -146,7 +156,13 @@ Type `EXIT` to close the console.
 | `window:Notepad` | Capture the first visible title matching `Notepad` as a case-insensitive regex. |
 | `desktop` | Capture the full virtual desktop across all monitors. Use sparingly. |
 
-When the task opens or activates another app, `active-window` automatically follows the newly focused window on the next step.
+When the task opens or activates another app, `active-window` automatically follows the newly focused window on the next step. When the Agent OS terminal itself is active, the agent prints a controller-protection message and temporarily observes the desktop to locate the real destination.
+
+For a known app, an explicit target remains the most deterministic option:
+
+```bash
+agent-os run "Send this message: reporting from Agent OS" --target "window:ChatGPT"
+```
 
 ## Screenshots and logs
 
@@ -191,7 +207,7 @@ agent-os run "Open Notepad" --dry-run
 
 ## Allowed applications
 
-The agent can only launch aliases in `config/apps.yml` by default. Add or remove aliases there. This is intentionally safer than exposing an arbitrary shell command tool.
+The agent can only launch aliases in `config/apps.yml` by default. Add or remove aliases there. This is intentionally safer than exposing an arbitrary shell command tool. Browser aliases include candidate installation paths because Chrome, Edge, and Brave are frequently installed without being added to `PATH`.
 
 ```yaml
 notepad:
@@ -268,3 +284,25 @@ python -m compileall src tests
 - `active-window` may capture a temporary popup after an action. Use `active-monitor` when surrounding context is necessary.
 
 See `docs/TROUBLESHOOTING.md` and `docs/RESEARCH.md` for implementation details and source decisions.
+
+## Visible execution and controller protection
+
+At every step the console now prints `Seeing:` followed by the exact window or desktop region sent to the model and the saved screenshot path. Actions are not executed by a hidden background service:
+
+- mouse actions use foreground desktop input;
+- typing pastes into the foreground destination;
+- `activate_window` brings a visible window forward;
+- `open_url` launches or activates a browser;
+- UI Automation clicking uses visible input rather than silent background mutation.
+
+After a run, inspect the evidence under `runs/<run-id>/screens/` and `events.jsonl`.
+
+## Upgrade an existing 0.1.0 checkout
+
+Extract the 0.2.0 archive over the existing project directory. The archive does not contain `.env` or `runs/`, so your API key and run history are preserved. Then reinstall editable metadata:
+
+```bash
+cd ~/Projects/gemini-windows-agent
+source .venv/Scripts/activate
+python -m pip install -e .
+```

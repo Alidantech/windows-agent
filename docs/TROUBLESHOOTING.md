@@ -1,5 +1,32 @@
 # Troubleshooting
 
+## The agent types into its own `Task:` prompt
+
+This was fixed in version 0.2.0. The terminal running Agent OS is now a protected controller window. With `--target active-window`, the agent observes the desktop whenever the controller is foreground, then activates the intended destination before typing.
+
+For maximum determinism, name the destination explicitly:
+
+```bash
+agent-os run "Send the message: reporting from Agent OS" --target "window:ChatGPT"
+```
+
+If an old editable install is still active after replacing files, reinstall it:
+
+```bash
+python -m pip install -e .
+```
+
+## I do not see the actions
+
+The console prints a `Seeing:` line for each model observation. The matching clean screenshot is saved under `runs/<run-id>/screens/step-NNN-before.png`. Agent OS does not run as a hidden service. It uses foreground keyboard/mouse input and visible window activation.
+
+Increase the delay to make each action easier to watch:
+
+```env
+AGENT_OS_STEP_DELAY_SECONDS=2.0
+```
+
+
 ## The agent repeats the same action
 
 The run should emit `stuck_detected` after the repeat limit. Inspect:

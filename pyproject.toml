@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "gemini-windows-agent"
-version = "0.1.0"
+version = "0.2.0"
 description = "A supervised Gemini-powered Windows desktop automation agent with saved screenshots, multi-monitor targeting, UI Automation metadata, skills, and structured logs."
 readme = "README.md"
 requires-python = ">=3.11,<3.14"

@@ -15,6 +15,7 @@ ActionName = Literal[
     "hotkey",
     "scroll",
     "launch_app",
+    "open_url",
     "activate_window",
     "wait",
     "ask_user",
@@ -39,6 +40,8 @@ class AgentDecision(BaseModel):
     keys: list[str] | None = Field(default=None, max_length=8)
     amount: int | None = Field(default=None, ge=-20, le=20)
     app: str | None = Field(default=None, max_length=100)
+    url: str | None = Field(default=None, max_length=2000)
+    browser: str | None = Field(default=None, max_length=100)
     window: str | None = Field(default=None, max_length=200)
     seconds: float | None = Field(default=None, ge=0.2, le=10.0)
     message: str | None = Field(default=None, max_length=1000)
@@ -60,6 +63,8 @@ class AgentDecision(BaseModel):
             raise ValueError("scroll requires amount")
         if self.action == "launch_app" and not self.app:
             raise ValueError("launch_app requires app")
+        if self.action == "open_url" and not self.url:
+            raise ValueError("open_url requires url")
         if self.action == "activate_window" and not self.window:
             raise ValueError("activate_window requires window")
         if self.action == "ask_user" and not self.message:
@@ -79,6 +84,8 @@ class AgentDecision(BaseModel):
                 ",".join(self.keys or []),
                 str(self.amount),
                 str(self.app),
+                str(self.url),
+                str(self.browser),
                 str(self.window),
             ]
         )

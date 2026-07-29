@@ -228,7 +228,11 @@ def chat(
     console.print("Enter one task at a time. Type EXIT to close.\n")
 
     while True:
-        task = Prompt.ask("Task").strip()
+        try:
+            task = Prompt.ask("Task").strip()
+        except (EOFError, KeyboardInterrupt):
+            console.print("\n[yellow]Interactive console closed.[/yellow]")
+            return
         if task.upper() in {"EXIT", "QUIT"}:
             return
         if not task:

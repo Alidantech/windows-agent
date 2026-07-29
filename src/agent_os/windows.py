@@ -112,15 +112,21 @@ class WindowManager:
             raise RuntimeError(f"No visible window title matched: {title_pattern!r}")
         return matches[0]
 
-    def activate(self, title_pattern: str) -> WindowInfo:
-        match = self.find_window(title_pattern)
-        wrapper = self._desktop().window(handle=match.hwnd)
+    def activate_hwnd(self, hwnd: int) -> WindowInfo:
+        match = next((item for item in self.list_windows(limit=300) if item.hwnd == hwnd), None)
+        if match is None:
+            raise RuntimeError(f"No visible window exists for handle {hwnd}.")
+        wrapper = self._desktop().window(handle=hwnd)
         try:
             wrapper.restore()
         except Exception:
             pass
         wrapper.set_focus()
         return match
+
+    def activate(self, title_pattern: str) -> WindowInfo:
+        match = self.find_window(title_pattern)
+        return self.activate_hwnd(match.hwnd)
 
     def snapshot_elements(
         self,

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import time
-from typing import Any
 
 from rich.console import Console
 from rich.prompt import Confirm
@@ -31,12 +30,18 @@ class ToolExecutor:
         self.dry_run = dry_run
         self.auto_confirm = auto_confirm
         self.safety = SafetyPolicy(confirm_risky=settings.confirm_risky)
+        self.controller_hwnd: int | None = None
+        self.allow_controller_interaction = False
 
         import pyautogui
 
         pyautogui.FAILSAFE = True
         pyautogui.PAUSE = 0.15
         self.gui = pyautogui
+
+    def configure_controller(self, hwnd: int | None, allow_interaction: bool) -> None:
+        self.controller_hwnd = hwnd
+        self.allow_controller_interaction = allow_interaction
 
     @staticmethod
     def _normalize_key(key: str) -> str:
@@ -66,6 +71,78 @@ class ToolExecutor:
                 return ExecutionResult(ok=False, summary="User rejected the risky action.")
         return None
 
+    def _focus_observation_target(
+        self,
+        decision: AgentDecision,
+        observation: CapturedObservation,
+    ) -> ExecutionResult | None:
+        foreground_actions = {
+            "click",
+            "double_click",
+            "right_click",
+            "click_element",
+            "move",
+            "type_text",
+            "press_key",
+            "hotkey",
+            "scroll",
+        }
+        hwnd = observation.target.hwnd
+        if decision.action not in foreground_actions or hwnd is None:
+            return None
+        try:
+            if self.windows.active_hwnd() != hwnd:
+                window = self.windows.activate_hwnd(hwnd)
+                time.sleep(0.3)
+                return ExecutionResult(
+                    ok=True,
+                    summary=f"Focused captured target before input: {window.title}",
+                    details={"focused_hwnd": hwnd},
+                )
+        except Exception as exc:
+            return ExecutionResult(
+                ok=False,
+                summary=f"Could not focus the captured target before input: {exc}",
+            )
+        return None
+
+    def _protect_controller(
+        self,
+        decision: AgentDecision,
+        observation: CapturedObservation,
+    ) -> ExecutionResult | None:
+        if self.allow_controller_interaction or self.controller_hwnd is None:
+            return None
+
+        target_is_controller = observation.target.hwnd == self.controller_hwnd
+        try:
+            foreground_is_controller = self.windows.active_hwnd() == self.controller_hwnd
+        except Exception:
+            foreground_is_controller = target_is_controller
+
+        if not (target_is_controller or foreground_is_controller):
+            return None
+
+        always_allowed = {"activate_window", "launch_app", "open_url", "wait"}
+        if decision.action in always_allowed:
+            return None
+
+        if decision.action == "press_key" and self._normalize_key(decision.key or "") == "winleft":
+            return None
+        if decision.action == "hotkey":
+            normalized = {self._normalize_key(key) for key in decision.keys or []}
+            if normalized in ({"ctrl", "esc"}, {"alt", "tab"}):
+                return None
+
+        return ExecutionResult(
+            ok=False,
+            summary=(
+                "Protected the Agent OS controller terminal from self-interaction. "
+                "Activate the intended application window, launch it, or open the URL before typing/clicking."
+            ),
+            details={"controller_hwnd": self.controller_hwnd},
+        )
+
     def execute(
         self,
         decision: AgentDecision,
@@ -74,6 +151,14 @@ class ToolExecutor:
         blocked = self._confirm_if_needed(decision)
         if blocked:
             return blocked
+
+        focus_result = self._focus_observation_target(decision, observation)
+        if focus_result is not None and not focus_result.ok:
+            return focus_result
+
+        protected = self._protect_controller(decision, observation)
+        if protected:
+            return protected
 
         if self.dry_run:
             return ExecutionResult(
@@ -123,7 +208,8 @@ class ToolExecutor:
                 if element is None:
                     raise RuntimeError(f"UI element {decision.element_id} is no longer available.")
                 x, y = self._screen_point(observation, element.center_x, element.center_y)
-                self.gui.click(x, y)
+                self.gui.moveTo(x, y, duration=0.25)
+                self.gui.click()
                 return ExecutionResult(
                     ok=True,
                     summary=f"Clicked element {decision.element_id} by its center point.",
@@ -178,11 +264,21 @@ class ToolExecutor:
                 time.sleep(1.0)
                 return ExecutionResult(ok=True, summary=message)
 
+            if action == "open_url":
+                assert decision.url is not None
+                message = self.app_launcher.open_url(decision.url, decision.browser)
+                time.sleep(1.5)
+                return ExecutionResult(ok=True, summary=message)
+
             if action == "activate_window":
                 assert decision.window is not None
                 window = self.windows.activate(decision.window)
                 time.sleep(0.4)
-                return ExecutionResult(ok=True, summary=f"Activated window: {window.title}")
+                return ExecutionResult(
+                    ok=True,
+                    summary=f"Activated window: {window.title}",
+                    details={"hwnd": window.hwnd, "title": window.title},
+                )
 
             if action == "wait":
                 seconds = decision.seconds or 1.0

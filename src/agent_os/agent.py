@@ -10,12 +10,13 @@ from rich.prompt import Prompt
 from agent_os.apps import AppLauncher
 from agent_os.capture import CapturedObservation, ScreenCapture
 from agent_os.config import Settings
-from agent_os.models import AgentDecision, ExecutionResult
+from agent_os.models import AgentDecision, ExecutionResult, WindowInfo
 from agent_os.prompts import PromptBuilder
 from agent_os.provider import GeminiPlanner
 from agent_os.repeat import RepeatDetector
 from agent_os.runlog import RunLogger
 from agent_os.skills import SkillLoader
+from agent_os.targeting import task_allows_controller
 from agent_os.tools import ToolExecutor
 from agent_os.windows import WindowManager
 
@@ -84,6 +85,32 @@ class DesktopAgent:
                 return element.center_x, element.center_y
         return None, None
 
+    def _effective_target(
+        self,
+        requested_target: str,
+        controller: WindowInfo,
+        allow_controller: bool,
+    ) -> tuple[str, bool]:
+        lowered = requested_target.strip().lower()
+        if lowered not in {"active", "active-window"} or allow_controller:
+            return requested_target, False
+        try:
+            if self.window_manager.active_hwnd() == controller.hwnd:
+                return "desktop", True
+        except Exception:
+            pass
+        return requested_target, False
+
+    def _restore_after_prompt(self, hwnd: int | None, controller_hwnd: int) -> None:
+        if hwnd is None or hwnd == controller_hwnd:
+            return
+        try:
+            self.window_manager.activate_hwnd(hwnd)
+            time.sleep(0.3)
+        except Exception:
+            # The window may have closed while the user was answering.
+            pass
+
     def run(
         self,
         task: str,
@@ -99,29 +126,64 @@ class DesktopAgent:
         guidance: list[str] = []
         last_result: ExecutionResult | None = None
         stuck_count = 0
+        rejected_done_count = 0
+
+        controller = self.window_manager.active_window()
+        allow_controller = task_allows_controller(task, target_spec, controller.title)
+        self.executor.configure_controller(controller.hwnd, allow_controller)
 
         logger.event(
             "run_started",
             summary=f"Task started: {task}",
             selected_skills=[skill.name for skill in selected_skills],
+            controller={
+                "hwnd": controller.hwnd,
+                "title": controller.title,
+                "process_name": controller.process_name,
+                "protected": not allow_controller,
+            },
         )
         console.print(f"[bold cyan]Run:[/bold cyan] {logger.run_id}")
         console.print(f"[bold]Task:[/bold] {task}")
-        console.print(f"[bold]Target:[/bold] {target_spec}")
+        console.print(f"[bold]Requested target:[/bold] {target_spec}")
+        if not allow_controller:
+            console.print(
+                f"[bold]Protected controller:[/bold] {controller.title} "
+                "(the agent will not type or click into its own console)"
+            )
         console.print("Emergency stop: move the pointer to the top-left corner or press Ctrl+C.\n")
 
         try:
             for step in range(1, limit + 1):
+                effective_target, discovery_mode = self._effective_target(
+                    target_spec,
+                    controller,
+                    allow_controller,
+                )
                 screenshot_path = (
                     logger.screenshot_path(step, "before")
                     if self.settings.save_screenshots
                     else None
                 )
-                observation = self.capture.capture(target_spec, screenshot_path=screenshot_path)
+                observation = self.capture.capture(effective_target, screenshot_path=screenshot_path)
+                if discovery_mode:
+                    console.print(
+                        "[yellow]Controller console is foreground; observing the desktop to select "
+                        "the real destination window.[/yellow]"
+                    )
+                console.print(
+                    f"[dim]Seeing: {observation.target.label} "
+                    f"({observation.original_image.width}x{observation.original_image.height})"
+                    + (f" | {screenshot_path}" if screenshot_path else "")
+                    + "[/dim]"
+                )
                 logger.event(
                     "observation",
                     summary=f"Captured step {step}: {observation.target.label}",
                     step=step,
+                    requested_target=target_spec,
+                    effective_target=effective_target,
+                    discovery_mode=discovery_mode,
                     target=observation.target.model_dump(),
                     screenshot=str(screenshot_path) if screenshot_path else None,
                     monitors=[item.model_dump() for item in observation.monitors],
@@ -146,6 +208,9 @@ class DesktopAgent:
                     history=history,
                     last_result=last_result,
                     user_guidance=guidance,
+                    requested_target=target_spec,
+                    controller_window=controller,
+                    controller_protected=not allow_controller,
                 )
                 decision, raw = self.planner.plan(prompt, observation.api_image_bytes)
                 logger.event(
@@ -171,12 +236,24 @@ class DesktopAgent:
                         )
                         logger.update_manifest(status="needs_input", steps=step)
                         return outcome
-                    answer = Prompt.ask(decision.message or "The agent needs guidance")
+                    return_hwnd = observation.target.hwnd
+                    try:
+                        answer = Prompt.ask(decision.message or "The agent needs guidance")
+                    except EOFError:
+                        logger.update_manifest(status="input_closed", steps=step)
+                        return RunOutcome(
+                            False,
+                            "Input stream closed while the agent was waiting for guidance.",
+                            logger.run_id,
+                            str(logger.run_dir),
+                            step,
+                        )
                     guidance.append(answer)
                     last_result = ExecutionResult(ok=True, summary=f"User guidance: {answer}")
                     history.append(self._history_item(step, decision, last_result))
                     logger.event("user_guidance", summary=answer, step=step)
                     repeat.clear()
+                    self._restore_after_prompt(return_hwnd, controller.hwnd)
                     continue
 
                 if decision.action == "fail":
@@ -186,11 +263,26 @@ class DesktopAgent:
                     return RunOutcome(False, summary, logger.run_id, str(logger.run_dir), step)
 
                 if decision.action == "done":
-                    if self.settings.verify_done:
+                    rejection: str | None = None
+                    next_hint: str | None = None
+                    if last_result is not None and not last_result.ok:
+                        rejection = "The immediately preceding action failed, so completion cannot be accepted."
+                        next_hint = "Recover from the failed action before declaring completion."
+                    elif (
+                        not allow_controller
+                        and observation.target.hwnd is not None
+                        and observation.target.hwnd == controller.hwnd
+                    ):
+                        rejection = "The visible window is the protected Agent OS controller, not the destination application."
+                        next_hint = "Activate or open the intended destination window first."
+                    elif self.settings.verify_done:
                         verify_prompt = self.prompts.build_verifier_prompt(
                             task,
                             observation,
                             decision.reason,
+                            requested_target=target_spec,
+                            controller_window=controller,
+                            controller_protected=not allow_controller,
                         )
                         verification, verify_raw = self.planner.verify(
                             verify_prompt,
@@ -204,16 +296,33 @@ class DesktopAgent:
                             raw_response=verify_raw,
                         )
                         if not verification.complete:
-                            last_result = ExecutionResult(
-                                ok=False,
-                                summary=(
-                                    "Completion verifier rejected done: "
-                                    f"{verification.evidence}. Hint: {verification.next_hint or 'inspect again'}"
-                                ),
+                            rejection = verification.evidence
+                            next_hint = verification.next_hint or "Inspect the destination again."
+
+                    if rejection is not None:
+                        rejected_done_count += 1
+                        last_result = ExecutionResult(
+                            ok=False,
+                            summary=f"Completion rejected: {rejection} Hint: {next_hint}",
+                        )
+                        history.append(self._history_item(step, decision, last_result))
+                        logger.event(
+                            "completion_rejected",
+                            summary=last_result.summary,
+                            step=step,
+                            rejected_done_count=rejected_done_count,
+                        )
+                        console.print(f"  [yellow]NOT DONE:[/yellow] {rejection}")
+                        if next_hint:
+                            console.print(f"  [yellow]Next:[/yellow] {next_hint}")
+                        if rejected_done_count >= 2:
+                            guidance.append(
+                                "Completion was rejected repeatedly. Do not return done again until visible "
+                                "evidence proves the exact requested result. Change strategy or ask the user."
                             )
-                            history.append(self._history_item(step, decision, last_result))
-                            repeat.clear()
-                            continue
+                        repeat.add(f"rejected_done|{decision.signature()}")
+                        continue
+
                     summary = decision.message or decision.reason
                     logger.event("run_completed", summary=summary, step=step)
                     logger.update_manifest(status="completed", steps=step, summary=summary)
@@ -237,12 +346,16 @@ class DesktopAgent:
                         decision=decision.model_dump(exclude_none=True),
                     )
                     history.append(self._history_item(step, decision, last_result))
+                    console.print(f"  [yellow]BLOCKED:[/yellow] {last_result.summary}")
                     if stuck_count >= 2:
                         if interactive:
-                            answer = Prompt.ask(
-                                "Agent is still stuck. Give guidance, or type STOP",
-                                default="STOP",
-                            )
+                            try:
+                                answer = Prompt.ask(
+                                    "Agent is still stuck. Give guidance, or type STOP",
+                                    default="STOP",
+                                )
+                            except EOFError:
+                                answer = "STOP"
                             if answer.strip().upper() == "STOP":
                                 logger.update_manifest(status="stopped_stuck", steps=step)
                                 return RunOutcome(

@@ -5,7 +5,7 @@ from pathlib import Path
 
 from agent_os.apps import AppLauncher
 from agent_os.capture import CapturedObservation
-from agent_os.models import ExecutionResult
+from agent_os.models import ExecutionResult, WindowInfo
 from agent_os.skills import Skill
 
 
@@ -37,6 +37,9 @@ class PromptBuilder:
         history: list[dict[str, object]],
         last_result: ExecutionResult | None,
         user_guidance: list[str],
+        requested_target: str | None = None,
+        controller_window: WindowInfo | None = None,
+        controller_protected: bool = False,
     ) -> str:
         target = observation.target
         windows = [
@@ -54,7 +57,18 @@ class PromptBuilder:
         context = {
             "task": task,
             "step": step,
-            "target": target.model_dump(),
+            "requested_target": requested_target or target.spec,
+            "current_observation_target": target.model_dump(),
+            "controller_window": (
+                {
+                    "hwnd": controller_window.hwnd,
+                    "title": controller_window.title,
+                    "process": controller_window.process_name,
+                    "protected": controller_protected,
+                }
+                if controller_window
+                else None
+            ),
             "monitors": monitor_data,
             "visible_windows": windows,
             "ui_automation_elements": elements,
@@ -76,11 +90,25 @@ class PromptBuilder:
         task: str,
         observation: CapturedObservation,
         decision_reason: str,
+        requested_target: str | None = None,
+        controller_window: WindowInfo | None = None,
+        controller_protected: bool = False,
     ) -> str:
         context = {
             "task": task,
             "candidate_completion_reason": decision_reason,
-            "target": observation.target.model_dump(),
+            "requested_target": requested_target or observation.target.spec,
+            "current_observation_target": observation.target.model_dump(),
+            "controller_window": (
+                {
+                    "hwnd": controller_window.hwnd,
+                    "title": controller_window.title,
+                    "process": controller_window.process_name,
+                    "protected": controller_protected,
+                }
+                if controller_window
+                else None
+            ),
             "ui_automation_elements": [item.model_dump() for item in observation.uia.elements[:60]],
         }
         return (

@@ -13,3 +13,15 @@ def test_requires_confirmation_for_run_dialog() -> None:
     assessment = SafetyPolicy(confirm_risky=True).assess(decision)
     assert assessment.allowed
     assert assessment.requires_confirmation
+
+
+def test_blocks_non_http_url() -> None:
+    decision = AgentDecision(action="open_url", url="file:///C:/secret.txt", reason="open file")
+    assessment = SafetyPolicy(confirm_risky=True).assess(decision)
+    assert not assessment.allowed
+
+
+def test_allows_https_url() -> None:
+    decision = AgentDecision(action="open_url", url="https://chatgpt.com", reason="open site")
+    assessment = SafetyPolicy(confirm_risky=True).assess(decision)
+    assert assessment.allowed
