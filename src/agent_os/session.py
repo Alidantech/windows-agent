@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
 from agent_os.cancellation import CancellationToken
+from agent_os.interaction_policy import question_is_sensitive
 
 
 @dataclass(frozen=True)
@@ -15,6 +16,7 @@ class TaskRecord:
     summary: str
     run_id: str
     timestamp: str
+    kind: str = "desktop"
 
 
 @dataclass
@@ -22,7 +24,15 @@ class SessionMemory:
     limit: int = 12
     records: list[TaskRecord] = field(default_factory=list)
 
-    def add(self, task: str, success: bool, summary: str, run_id: str) -> None:
+    def add(
+        self,
+        task: str,
+        success: bool,
+        summary: str,
+        run_id: str,
+        *,
+        kind: str = "desktop",
+    ) -> None:
         self.records.append(
             TaskRecord(
                 task=task,
@@ -30,6 +40,7 @@ class SessionMemory:
                 summary=summary,
                 run_id=run_id,
                 timestamp=datetime.now(timezone.utc).isoformat(),
+                kind=kind,
             )
         )
         del self.records[:-self.limit]
@@ -48,6 +59,7 @@ class QuestionBroker:
         self.cancellation = cancellation
         self._lock = threading.Lock()
         self._question: str | None = None
+        self._sensitive = False
         self._answer: queue.Queue[str] = queue.Queue(maxsize=1)
 
     @property
@@ -55,7 +67,12 @@ class QuestionBroker:
         with self._lock:
             return self._question
 
-    def ask(self, question: str) -> str:
+    @property
+    def pending_sensitive(self) -> bool:
+        with self._lock:
+            return self._question is not None and self._sensitive
+
+    def ask(self, question: str, *, sensitive: bool | None = None) -> str:
         while True:
             try:
                 self._answer.get_nowait()
@@ -63,12 +80,14 @@ class QuestionBroker:
                 break
         with self._lock:
             self._question = question
+            self._sensitive = question_is_sensitive(question) if sensitive is None else sensitive
         while True:
             self.cancellation.raise_if_cancelled()
             try:
                 answer = self._answer.get(timeout=0.1)
                 with self._lock:
                     self._question = None
+                    self._sensitive = False
                 return answer
             except queue.Empty:
                 continue
@@ -87,6 +106,7 @@ class QuestionBroker:
         with self._lock:
             was_waiting = self._question is not None
             self._question = None
+            self._sensitive = False
         if not was_waiting:
             return
         try:
