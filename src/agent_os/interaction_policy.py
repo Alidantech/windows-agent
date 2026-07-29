@@ -4,6 +4,7 @@ import re
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Literal
 
+from agent_os.local_values import LOCAL_VALUE_TOKEN, local_value_vault
 from agent_os.models import AgentDecision, UIElement
 
 if TYPE_CHECKING:
@@ -79,6 +80,8 @@ class InteractionPolicy:
     @staticmethod
     def _value_was_supplied(value: str, corpus: str) -> bool:
         candidate = value.strip()
+        if candidate == LOCAL_VALUE_TOKEN:
+            return False
         return bool(candidate) and (
             candidate in corpus or candidate.casefold() in corpus.casefold()
         )
@@ -113,6 +116,11 @@ class InteractionPolicy:
 
         if decision.action in {"fill_element", "type_text"} and decision.text is not None:
             label = element_name or "requested field"
+            if (
+                decision.text == LOCAL_VALUE_TOKEN
+                and local_value_vault.matches_target(label)
+            ):
+                return None
             if self._PASSWORD.search(label) and not self._value_was_supplied(
                 decision.text,
                 corpus,
