@@ -3,9 +3,9 @@ requires = ["hatchling>=1.27"]
 build-backend = "hatchling.build"
 
 [project]
-name = "gemini-windows-agent"
-version = "0.3.0"
-description = "A monitor-leased Gemini Windows automation agent with aligned screenshots, isolated browser input, UI Automation, overlays, skills, and structured evidence."
+name = "windows-agent"
+version = "0.5.0"
+description = "Provider-ready Windows automation with monitor leases, isolated browser input, UI Automation, safe overlays, skills, and deterministic evidence."
 readme = "README.md"
 requires-python = ">=3.11,<3.14"
 license = {text = "MIT"}
@@ -29,12 +29,19 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+openai = ["openai>=2.0.0,<3.0.0"]
+mistral = ["mistralai>=1.9.0,<3.0.0"]
+all-providers = [
+  "openai>=2.0.0,<3.0.0",
+  "mistralai>=1.9.0,<3.0.0",
+]
 dev = [
   "pytest>=8.4.0,<9.0.0",
   "ruff>=0.12.0,<1.0.0",
 ]
 
 [project.scripts]
+windows-agent = "agent_os.windows_cli:app"
 agent-os = "agent_os.cli:app"
 
 [tool.hatch.build.targets.wheel]

@@ -5,10 +5,10 @@
 Use an isolated browser, cooperative conflict policy, and denied physical input:
 
 ```env
-AGENT_OS_CONTROL_MODE=auto
-AGENT_OS_BROWSER_BACKEND=isolated
-AGENT_OS_CONFLICT_POLICY=cooperative
-AGENT_OS_PHYSICAL_INPUT_POLICY=deny
+WINDOWS_AGENT_CONTROL_MODE=auto
+WINDOWS_AGENT_BROWSER_BACKEND=isolated
+WINDOWS_AGENT_CONFLICT_POLICY=cooperative
+WINDOWS_AGENT_PHYSICAL_INPUT_POLICY=deny
 ```
 
 ## Boundaries

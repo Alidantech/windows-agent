@@ -19,7 +19,7 @@ An isolated `open_url` directly changes the lease backend to browser.
 Desktop bound-window capture attempts Win32 `PrintWindow`. If it fails:
 
 - strict mode permits a screen fallback only when the bound HWND owns foreground;
-- otherwise the run stops before Gemini receives unrelated pixels.
+- otherwise the run stops before the selected AI provider receives unrelated pixels.
 
 Every observation includes a target identity and capture token derived from target metadata plus PNG bytes. The prompt receives the token, lease, monitor, HWND/browser identity, and source.
 
@@ -37,6 +37,22 @@ The desktop backend uses UI Automation semantic patterns first. Shared physical 
 
 A transparent, click-through, non-activating Tk/Win32 overlay marks the assigned monitor and shows a virtual agent cursor. It requests display-affinity exclusion from capture where Windows supports it.
 
-## Planner and verifier
+## Planner, provider registry, and verifier
 
-Gemini receives one screenshot and structured context per step. The planner returns a typed `AgentDecision`. A separate typed verifier checks candidate completion. Deterministic tool evidence is included in history and observation state.
+`DesktopAgent` depends on the `PlannerProvider` protocol rather than a specific model SDK. The lazy registry currently supplies Gemini, OpenAI, and Mistral adapters. Each adapter receives one screenshot plus structured context and returns the same typed `AgentDecision` or `TaskVerification` models.
+
+The provider never receives direct operating-system capabilities. It can only select from the locally validated tool schema. A separate typed verifier checks candidate completion, while deterministic tool evidence is accepted without an unnecessary model call.
+
+## Cancellation path
+
+The CLI installs an interrupt guard while a task is running. Ctrl+C cancels the shared token, aborts Windows Agent-owned browser work, records interruption evidence, stops the overlay, and exits or recreates the chat controller.
+
+Provider requests execute in daemon workers and are polled by the main thread. Browser loops and delays check the same token.
+
+## Safe overlay
+
+No top-level window should span the monitor interior. The overlay consists of four border strips plus small banner and cursor windows. Each window is marked click-through, non-activating, tool-window, topmost, and excluded from capture where Windows supports display affinity.
+
+## Deterministic terminal tools
+
+Tools may return structured completion evidence. The agent accepts deterministic tool evidence directly and does not ask a screenshot-only verifier to validate off-screen artifacts. Website smoke testing uses this path.

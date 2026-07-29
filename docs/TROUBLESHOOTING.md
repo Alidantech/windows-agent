@@ -2,22 +2,22 @@
 
 ## Screenshot and controlled app differ
 
-Use v0.3 exact leases. Prefer:
+Prefer exact leases:
 
 ```bash
-agent-os screens
-agent-os run "TASK" --target hwnd:NUMBER
+windows-agent screens
+windows-agent run "TASK" --target hwnd:NUMBER
 ```
 
-For websites, use `--control-mode browser`. Strict alignment should remain enabled. If a bound desktop app cannot be captured with `PrintWindow` while another app is foreground, Agent OS stops instead of acting.
+For websites, use `--control-mode browser`. Strict alignment should remain enabled. If a bound desktop app cannot be captured while another app is foreground, Windows Agent must stop instead of acting on unrelated pixels.
 
 ## Window title does not match
 
 `window:` matching is fuzzy and ignores browser brand words, but exact HWND is strongest:
 
 ```bash
-agent-os screens
-agent-os lease-preview --target hwnd:NUMBER
+windows-agent screens
+windows-agent lease-preview --target hwnd:NUMBER
 ```
 
 ## Agent interrupts my mouse or keyboard
@@ -36,24 +36,47 @@ For desktop apps, UI Automation may still work with physical input denied. Unsup
 python -m playwright install chromium
 ```
 
-Then run `agent-os doctor`.
+Then run `windows-agent doctor`.
 
-## Isolated Chrome channel cannot launch
+## Provider quota, authentication, or DNS failure
 
-Agent OS automatically falls back to Playwright Chromium. Install Chromium using the command above. You may also set:
+A rate-limit response is a provider quota issue. A `getaddrinfo failed` response is DNS/network resolution. Neither indicates a desktop-control failure. Windows Agent logs the failure and must not continue with an unparsed action.
 
-```env
-AGENT_OS_BROWSER_CHANNEL=chromium
-```
+## Monitor overlay appears in screenshots or looks opaque
 
-## Gemini quota or DNS failure
-
-A `429 RESOURCE_EXHAUSTED` response is a model quota issue. A `getaddrinfo failed` response is DNS/network resolution. Neither indicates a desktop-control failure. Agent OS logs the failure and does not continue with an unparsed action.
-
-## Monitor overlay appears in screenshots
-
-Windows normally excludes the overlay using display affinity. If the OS does not support that behavior, disable it:
+Terminate stale processes, test the overlay independently, and disable it if necessary:
 
 ```bash
-agent-os run "TASK" --no-overlay
+taskkill //F //IM windows-agent.exe //T
+windows-agent overlay-test --target monitor:3 --seconds 8
+windows-agent run "TASK" --target monitor:3 --no-overlay
 ```
+
+## Ctrl+C cancellation
+
+The task should cancel the active token and browser work. Provider calls also have a bounded timeout configured with:
+
+```env
+WINDOWS_AGENT_API_TIMEOUT_MS=30000
+```
+
+## Selected provider SDK is missing
+
+Check provider status:
+
+```bash
+windows-agent providers
+```
+
+Install the selected optional adapter:
+
+```bash
+python -m pip install -e ".[openai]"
+python -m pip install -e ".[mistral]"
+```
+
+Confirm that `WINDOWS_AGENT_PROVIDER`, `WINDOWS_AGENT_MODEL`, and the matching API key are configured.
+
+## Smoke test completed but verifier rejected completion
+
+A complete deterministic smoke-test report should be accepted as task evidence. The agent should not ask a screenshot-only verifier to locate report output inside the webpage.

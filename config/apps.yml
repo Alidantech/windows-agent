@@ -1,5 +1,5 @@
 # Only aliases in this file may be launched by the agent by default.
-# `candidates` lets Agent OS find apps that are installed but not present on PATH.
+# `candidates` lets Windows Agent find apps that are installed but not present on PATH.
 notepad:
   command: ["notepad.exe"]
 calculator:

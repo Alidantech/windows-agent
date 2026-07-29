@@ -7,4 +7,4 @@ python -m pip install --upgrade pip
 python -m pip install -e .
 python -m playwright install chromium
 [ -f .env ] || cp .env.example .env
-printf '\nSetup complete. Add GEMINI_API_KEY to .env, then run: agent-os doctor\n'
+printf '\nSetup complete. Select a provider and add its API key to .env, then run: windows-agent doctor\n'

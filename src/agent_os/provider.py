@@ -1,80 +1,39 @@
+"""Backward-compatible provider facade.
+
+New integrations should import from :mod:`agent_os.providers`. The historical
+``GeminiPlanner`` constructor is retained as a provider-neutral factory so the
+v0.4 agent core can select Gemini, OpenAI, or Mistral without a hard break.
+"""
+
 from __future__ import annotations
 
-import time
-from typing import Any, TypeVar
-
-from pydantic import BaseModel
-
-from agent_os.config import Settings, gemini_api_key
-from agent_os.models import AgentDecision, TaskVerification
+from agent_os.cancellation import CancellationToken
+from agent_os.config import Settings
 from agent_os.prompts import PromptBuilder
-
-T = TypeVar("T", bound=BaseModel)
+from agent_os.providers import (
+    PlannerProvider,
+    available_providers,
+    create_planner,
+    register_provider,
+)
 
 
 class GeminiPlanner:
-    def __init__(self, settings: Settings, prompts: PromptBuilder) -> None:
-        self.settings = settings
-        self.prompts = prompts
-        try:
-            from google import genai
-            from google.genai import types
-        except ImportError as exc:
-            raise RuntimeError(
-                "google-genai is not installed. Activate the project virtual environment and run "
-                "'python -m pip install -e .'."
-            ) from exc
-        self._types: Any = types
-        self.client = genai.Client(api_key=gemini_api_key())
+    """Compatibility constructor that returns the configured provider adapter."""
 
-    def _request(
-        self,
-        prompt: str,
-        image_bytes: bytes,
-        schema: type[T],
-        system_instruction: str,
-    ) -> tuple[T, str]:
-        last_error: Exception | None = None
-        for attempt in range(1, self.settings.api_retries + 1):
-            try:
-                response = self.client.models.generate_content(
-                    model=self.settings.model,
-                    contents=[
-                        prompt,
-                        self._types.Part.from_bytes(data=image_bytes, mime_type="image/png"),
-                    ],
-                    config=self._types.GenerateContentConfig(
-                        system_instruction=system_instruction,
-                        temperature=0.1,
-                        response_mime_type="application/json",
-                        response_schema=schema,
-                    ),
-                )
-                raw = (response.text or "").strip()
-                if not raw:
-                    raise RuntimeError("Gemini returned an empty response.")
-                return schema.model_validate_json(raw), raw
-            except Exception as exc:
-                last_error = exc
-                if attempt < self.settings.api_retries:
-                    delay = self.settings.api_retry_base_seconds * (2 ** (attempt - 1))
-                    time.sleep(delay)
-        raise RuntimeError(
-            f"Gemini request failed after {self.settings.api_retries} attempts: {last_error}"
-        ) from last_error
+    def __new__(
+        cls,
+        settings: Settings,
+        prompts: PromptBuilder,
+        cancellation: CancellationToken | None = None,
+    ) -> PlannerProvider:
+        return create_planner(settings, prompts, cancellation)
 
-    def plan(self, prompt: str, image_bytes: bytes) -> tuple[AgentDecision, str]:
-        return self._request(
-            prompt=prompt,
-            image_bytes=image_bytes,
-            schema=AgentDecision,
-            system_instruction=self.prompts.system_instruction,
-        )
 
-    def verify(self, prompt: str, image_bytes: bytes) -> tuple[TaskVerification, str]:
-        return self._request(
-            prompt=prompt,
-            image_bytes=image_bytes,
-            schema=TaskVerification,
-            system_instruction=self.prompts.verifier_instruction,
-        )
+__all__ = [
+    "GeminiPlanner",
+    "PlannerProvider",
+    "available_providers",
+    "create_planner",
+    "register_provider",
+]

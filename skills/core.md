@@ -11,4 +11,4 @@ Prefer semantic controls in this order:
 3. direct application tools and shortcuts;
 4. physical cursor/keyboard only when policy permits.
 
-The terminal running Agent OS is protected. Never type or click into it unless the user's task explicitly targets that terminal.
+The terminal running Windows Agent is protected. Never type or click into it unless the user's task explicitly targets that terminal.

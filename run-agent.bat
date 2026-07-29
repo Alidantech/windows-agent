@@ -6,5 +6,5 @@ if not exist .venv\Scripts\python.exe (
   exit /b 1
 )
 call .venv\Scripts\activate.bat
-agent-os chat
+windows-agent chat
 endlocal

@@ -2,4 +2,4 @@ Open chatgpt.com in the isolated browser.
 Open defytickets.com and smoke test every unique same-origin link.
 Open Calculator on the assigned monitor and calculate 125 times 8.
 Inspect the current browser page and list visible form controls.
-Open Notepad on the assigned monitor and type Hello from Agent OS.
+Open Notepad on the assigned monitor and type Hello from Windows Agent.

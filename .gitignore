@@ -5,12 +5,8 @@ __pycache__/
 .ruff_cache/
 .env
 runs/
+.windows-agent/
+.agent-os/
 dist/
 build/
 *.egg-info/
-
-# Windows Agent runtime files
-.agent-os/
-runs/
-.venv/
-.env
