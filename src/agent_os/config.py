@@ -52,6 +52,8 @@ class Settings(BaseSettings):
     max_steps: int = Field(default=40, ge=1, le=200)
     repeat_limit: int = Field(default=3, ge=2, le=10)
     step_delay_seconds: float = Field(default=0.8, ge=0.0, le=30.0)
+    completion_settle_seconds: float = Field(default=0.8, ge=0.0, le=10.0)
+    max_completion_rejections: int = Field(default=2, ge=1, le=5)
     api_retries: int = Field(default=2, ge=1, le=8)
     api_retry_base_seconds: float = Field(default=1.5, ge=0.1, le=20.0)
     api_timeout_ms: int = Field(default=30000, ge=3000, le=180000)
@@ -130,7 +132,11 @@ def configured_model_candidates(settings: Settings) -> list[tuple[str, str]]:
         return candidates
 
     raw = settings.auto_models.strip()
-    refs = [part.strip() for part in raw.split(",") if part.strip()] if raw else list(DEFAULT_AUTO_MODELS)
+    refs = (
+        [part.strip() for part in raw.split(",") if part.strip()]
+        if raw
+        else list(DEFAULT_AUTO_MODELS)
+    )
     candidates: list[tuple[str, str]] = []
     for ref in refs:
         candidate = parse_model_ref(ref)
@@ -142,7 +148,9 @@ def configured_model_candidates(settings: Settings) -> list[tuple[str, str]]:
 def load_settings() -> Settings:
     load_dotenv()
     settings = Settings()
-    if settings.provider != "auto" and (not settings.model.strip() or settings.model == "auto"):
+    if settings.provider != "auto" and (
+        not settings.model.strip() or settings.model == "auto"
+    ):
         settings.model = model_for_provider(settings.provider)
 
     project_root = Path(__file__).resolve().parents[2]
@@ -172,6 +180,7 @@ def provider_api_key(provider: str) -> str:
     key = secret_store.get(provider)
     if not key:
         raise RuntimeError(
-            f"No API key is configured for {provider}. Use '/key set {provider}' in Windows Agent."
+            f"No API key is configured for {provider}. "
+            f"Use '/key set {provider}' in Windows Agent."
         )
     return key
