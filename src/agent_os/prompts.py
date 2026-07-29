@@ -29,6 +29,23 @@ class PromptBuilder:
             return "No additional task skills selected."
         return "\n\n".join(f"## Skill: {skill.name}\n{skill.body}" for skill in skills)
 
+    def build_chat_prompt(
+        self,
+        message: str,
+        session_context: list[dict[str, object]] | None = None,
+    ) -> str:
+        context = {
+            "user_message": message,
+            "recent_session_context": (session_context or [])[-12:],
+            "mode": "terminal_conversation",
+            "computer_action_performed": False,
+        }
+        return (
+            "Respond directly to the user inside the Windows Agent terminal. "
+            "Do not select or describe operating-system actions.\n\n"
+            f"CONVERSATION CONTEXT (JSON):\n{json.dumps(context, indent=2, ensure_ascii=False)}"
+        )
+
     def build_step_prompt(
         self,
         task: str,
@@ -68,11 +85,11 @@ class PromptBuilder:
             "available_app_aliases": self.app_launcher.available_aliases(),
             "recent_history": history[-10:],
             "last_execution_result": last_result.model_dump() if last_result else None,
-            "user_guidance": user_guidance[-5:],
+            "user_guidance": user_guidance[-8:],
             "persistent_session_context": (session_context or [])[-12:],
         }
         return (
-            "Select exactly one next action.\n\n"
+            "Select exactly one next action for this actionable computer task.\n\n"
             f"TASK CONTEXT (JSON):\n{json.dumps(context, indent=2, ensure_ascii=False)}\n\n"
             f"SELECTED SKILLS:\n{self._skills_text(skills)}\n\n"
             "The screenshot follows. Return only the typed action object."
@@ -86,6 +103,7 @@ class PromptBuilder:
         decision_reason: str,
         controller_window: WindowInfo,
         controller_protected: bool,
+        last_result: ExecutionResult | None = None,
     ) -> str:
         context = {
             "task": task,
@@ -94,6 +112,7 @@ class PromptBuilder:
             "capture_token": observation.capture_token,
             "target": observation.target.model_dump(),
             "observation_state": observation.state,
+            "last_execution_result": last_result.model_dump() if last_result else None,
             "controller_window": {
                 "hwnd": controller_window.hwnd,
                 "title": controller_window.title,
@@ -103,7 +122,8 @@ class PromptBuilder:
             "ui_elements": [item.model_dump() for item in observation.uia.elements[:80]],
         }
         return (
-            "Verify whether the exact task is visibly complete in the leased screenshot. "
-            "An attempted action is not evidence of success.\n\n"
+            "Verify whether the exact task is complete in this fresh leased observation. "
+            "An attempted action is not evidence of success, but a visibly changed destination "
+            "page or a successful deterministic tool result is valid evidence.\n\n"
             f"CONTEXT:\n{json.dumps(context, indent=2, ensure_ascii=False)}"
         )
