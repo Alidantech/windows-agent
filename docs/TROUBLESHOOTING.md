@@ -1,82 +1,36 @@
 # Troubleshooting
 
-## Screenshot and controlled app differ
+## The assigned monitor becomes black
 
-Prefer exact leases:
-
-```bash
-windows-agent screens
-windows-agent run "TASK" --target hwnd:NUMBER
-```
-
-For websites, use `--control-mode browser`. Strict alignment should remain enabled. If a bound desktop app cannot be captured while another app is foreground, Windows Agent must stop instead of acting on unrelated pixels.
-
-## Window title does not match
-
-`window:` matching is fuzzy and ignores browser brand words, but exact HWND is strongest:
+Windows Agent v0.6 never creates a monitor-sized overlay. The overlay is a separate process containing only four thin border strips and two small badges. If a stale black surface remains from an older release, close the old process from another terminal:
 
 ```bash
-windows-agent screens
-windows-agent lease-preview --target hwnd:NUMBER
+taskkill //F //IM agent-os.exe //T 2>/dev/null || true
+taskkill //F //IM windows-agent.exe //T 2>/dev/null || true
 ```
 
-## Agent interrupts my mouse or keyboard
+Restart `windows-agent` and use `/set overlay off` to confirm that an overlay is the source. `/set overlay on` enables the new process-isolated border again.
 
-Run with:
+## Ctrl+C does not appear to stop a task
 
-```bash
---control-mode browser --physical-input deny --conflict-policy cooperative
-```
+Press Ctrl+C once while the persistent input prompt is visible. The shell cancels the active token and closes Windows Agent-owned Playwright processes. The console itself stays open. Use `/exit` to close the console.
 
-For desktop apps, UI Automation may still work with physical input denied. Unsupported controls require `--physical-input ask`.
+## The smoke test repeats after reporting success
 
-## Playwright browser is missing
+A complete `smoke_test_site` result is deterministic evidence. v0.6 ends the run immediately when the report covers every discovered link within the configured limit. It does not ask a visual verifier to find the JSON report inside the webpage.
 
-```bash
-python -m playwright install chromium
-```
+## No model is ready
 
-Then run `windows-agent doctor`.
+Inside the console, run `/key status` and `/models`. Store a provider key with `/key set gemini`, `/key set openai`, or `/key set mistral`.
 
-## Provider quota, authentication, or DNS failure
+## A model reaches a rate limit
 
-A rate-limit response is a provider quota issue. A `getaddrinfo failed` response is DNS/network resolution. Neither indicates a desktop-control failure. Windows Agent logs the failure and must not continue with an unparsed action.
+Keep `/model auto` selected. Windows Agent sends the same task prompt, screenshot, run history and session context to the next configured route. Daily quota failures receive a long cooldown; transient limits use the configured cooldown.
 
-## Monitor overlay appears in screenshots or looks opaque
+## The browser is missing
 
-Terminate stale processes, test the overlay independently, and disable it if necessary:
+Run `python -m playwright install chromium`, restart `windows-agent`, then run `/doctor`.
 
-```bash
-taskkill //F //IM windows-agent.exe //T
-windows-agent overlay-test --target monitor:3 --seconds 8
-windows-agent run "TASK" --target monitor:3 --no-overlay
-```
+## Screenshots and the controlled target differ
 
-## Ctrl+C cancellation
-
-The task should cancel the active token and browser work. Provider calls also have a bounded timeout configured with:
-
-```env
-WINDOWS_AGENT_API_TIMEOUT_MS=30000
-```
-
-## Selected provider SDK is missing
-
-Check provider status:
-
-```bash
-windows-agent providers
-```
-
-Install the selected optional adapter:
-
-```bash
-python -m pip install -e ".[openai]"
-python -m pip install -e ".[mistral]"
-```
-
-Confirm that `WINDOWS_AGENT_PROVIDER`, `WINDOWS_AGENT_MODEL`, and the matching API key are configured.
-
-## Smoke test completed but verifier rejected completion
-
-A complete deterministic smoke-test report should be accepted as task evidence. The agent should not ask a screenshot-only verifier to locate report output inside the webpage.
+Strict alignment is enabled by default. The capture token, lease generation and target identity must agree before any action is executed. Use `/set target monitor:3` for a dedicated monitor.

@@ -1,46 +1,16 @@
 # Windows Agent
 
-**Version 0.5.0**
+**Version 0.6.0**
 
-Windows Agent is a supervised Windows desktop automation project with provider-pluggable vision planning, stable monitor/window leases, independent browser input, Windows UI Automation, safe visual overlays, saved evidence, and deterministic website smoke testing.
+Windows Agent is a supervised Windows desktop agent with a persistent terminal console, provider-pluggable vision planning, model fallback, dedicated monitor/window leases, isolated browser input, Windows UI Automation, safe visual overlays, saved evidence, and deterministic website smoke tests.
 
-The core safety invariant is:
+The core safety rule is:
 
-> The pixels sent to the model and the target receiving the action must belong to the same control lease.
+> The pixels sent to a model and the target receiving an action must belong to the same control lease.
 
-Gemini is the default provider. OpenAI and Mistral can be selected without changing the desktop-control code.
+## Start once, work interactively
 
-## Capabilities
-
-- Assign a dedicated monitor, exact HWND, process, named window, active window, or full desktop.
-- Bind screenshots, UI metadata and actions to one leased target.
-- Run websites in an isolated Playwright browser with its own page-level mouse and keyboard.
-- Use UI Automation for semantic desktop interaction before physical input.
-- Deny, ask for, or allow physical mouse/keyboard fallback.
-- Show a thin controlled-monitor border and vibrant virtual agent cursor.
-- Save screenshots, model decisions, tool results and manifests for every run.
-- Deterministically discover and smoke-test same-origin website links.
-- Cancel current work with Ctrl+C and terminate owned browser processes.
-- Load task-specific skills from Markdown files.
-
-## Supported AI providers
-
-| Provider | Status | Key | Installation |
-|---|---|---|---|
-| Gemini | Built in and default | `GEMINI_API_KEY` | Base installation |
-| OpenAI | Optional | `OPENAI_API_KEY` | `python -m pip install -e ".[openai]"` |
-| Mistral | Optional | `MISTRAL_API_KEY` | `python -m pip install -e ".[mistral]"` |
-
-See [Provider architecture](docs/PROVIDERS.md) for adapter details and custom-provider registration.
-
-## Requirements
-
-- Windows 10 or Windows 11
-- Python 3.11–3.13
-- An API key for the selected AI provider
-- Playwright Chromium for independent browser control
-
-## Installation using Git Bash
+Install and launch:
 
 ```bash
 cd ~/Projects/windows-agent
@@ -49,168 +19,140 @@ source .venv/Scripts/activate
 python -m pip install --upgrade pip
 python -m pip install -e ".[dev]"
 python -m playwright install chromium
-cp .env.example .env
+windows-agent
 ```
 
-The package installs two commands:
+`windows-agent` no longer accepts task, provider, model, target, or physical-input arguments. Start the console once and use natural-language tasks or slash commands.
 
 ```text
-windows-agent   Primary command
-agent-os        Temporary compatibility alias
+windows-agent
+
+windows-agent  model auto · target monitor:3 · auto/deny
+Type a task, or /help for commands.
+
+you ❯ Open defytickets.com and smoke test every unique same-origin link
 ```
 
-## Configure a provider
+## Persistent console commands
 
-Gemini:
+| Command | Purpose |
+|---|---|
+| `/help` | Show all commands |
+| `/status` | Show current model, target, task, queue and control settings |
+| `/queue` | Show active and pending tasks |
+| `/cancel` | Cancel the current task without closing the console |
+| `/models [provider]` | Query models available to configured accounts |
+| `/model auto` | Enable context-preserving automatic model fallback |
+| `/model provider:model` | Select a specific model |
+| `/key status` | Show which provider keys are configured and where |
+| `/key set gemini` | Enter a key invisibly and save it in Windows Credential Manager |
+| `/key delete gemini` | Delete the stored credential |
+| `/set target monitor:3` | Assign the controlled monitor |
+| `/set control browser` | Use isolated browser control |
+| `/set physical deny` | Never use the shared Windows mouse or keyboard |
+| `/set overlay on` | Enable the thin monitor border and virtual AI cursor |
+| `/doctor` | Check dependencies, keys, monitors and Windows access |
+| `/logs` | Show recent evidence folders |
+| `/memory` | Show persistent cross-task context |
+| `/memory clear` | Clear cross-task context |
+| `/exit` | Cancel, clean up owned processes and close |
 
-```env
-WINDOWS_AGENT_PROVIDER=gemini
-WINDOWS_AGENT_MODEL=gemini-3.5-flash-lite
-GEMINI_API_KEY=YOUR_KEY
+Tasks entered while another task is running are queued. The prompt stays usable while the worker prints progress above it. When the agent asks a question, the same input box changes to `answer ❯`.
+
+## Terminal feed
+
+Windows Agent uses one glyph for each relationship:
+
+```text
+⏺ open_url (1/40)
+  ⎿ Open defytickets.com in the isolated browser.
+  ⎿ OK Opened https://www.defytickets.com/ (HTTP 200)
+
+⏺ smoke_test_site (2/40)
+  ⎿ Test every unique same-origin link.
+  ⎿ SMOKE Testing 1/6: https://www.defytickets.com/
+  ⎿ OK 6 passed, 0 failed; report saved
+
+⏺ DONE Smoke-tested all unique links.
+  ⎿ evidence runs/<run-id>/browser-smoke/
 ```
 
-OpenAI:
+Color communicates status, but indentation and glyphs preserve meaning in limited-color terminals.
+
+## AI providers and auto mode
+
+Gemini is installed by default. OpenAI and Mistral are optional:
 
 ```bash
 python -m pip install -e ".[openai]"
-```
-
-```env
-WINDOWS_AGENT_PROVIDER=openai
-WINDOWS_AGENT_MODEL=gpt-5-mini
-OPENAI_API_KEY=YOUR_KEY
-```
-
-Mistral:
-
-```bash
 python -m pip install -e ".[mistral]"
 ```
 
-```env
-WINDOWS_AGENT_PROVIDER=mistral
-WINDOWS_AGENT_MODEL=mistral-small-latest
-MISTRAL_API_KEY=YOUR_KEY
-```
-
-`WINDOWS_AGENT_MODEL` has priority. `GEMINI_MODEL`, `OPENAI_MODEL` and `MISTRAL_MODEL` remain provider-specific fallbacks.
-
-Existing `AGENT_OS_*` environment variables remain accepted during migration, but new configuration should use `WINDOWS_AGENT_*`.
-
-## Validate the machine
-
-```bash
-windows-agent doctor
-windows-agent providers
-windows-agent screens
-```
-
-Install Playwright separately when needed:
-
-```bash
-windows-agent browser-install
-```
-
-## Dedicated-monitor browser task
-
-```bash
-windows-agent run \
-  "Open defytickets.com and smoke test every unique same-origin link" \
-  --target monitor:3 \
-  --control-mode browser \
-  --physical-input deny
-```
-
-Expected high-level flow:
+Store keys without exposing them in command history:
 
 ```text
-open_url
-smoke_test_site
-complete from deterministic evidence
+/key set gemini
+/key set openai
+/key set mistral
 ```
 
-The browser backend uses Playwright's virtual page mouse and keyboard, so it does not move your Windows pointer or type through your physical keyboard.
-
-## Select a provider per run
-
-Global provider options must appear before the command:
-
-```bash
-windows-agent --provider openai --model gpt-5-mini run \
-  "Open example.com and describe the visible page" \
-  --target monitor:3 \
-  --physical-input deny
-```
-
-## Interactive task console
-
-```bash
-windows-agent chat \
-  --target monitor:3 \
-  --control-mode auto \
-  --physical-input deny
-```
-
-Example tasks:
+Enable fallback:
 
 ```text
-Open chatgpt.com
-Open defytickets.com and smoke test every same-origin link
-Open Notepad on the assigned monitor and type Hello from Windows Agent
-EXIT
+/model auto
 ```
 
-## Exact target selection
+The default candidate order is configurable with `WINDOWS_AGENT_AUTO_MODELS`. When a model returns a rate-limit, quota, transient server, DNS, connection or timeout failure, Windows Agent can retry the **same prompt, screenshot, action history and session context** on the next ready model. A failed model enters cooldown so every step does not retry it.
 
-```bash
-windows-agent screens
-```
-
-Then target an exact HWND:
-
-```bash
-windows-agent run "Continue testing this application" --target hwnd:428772
-```
-
-Other accepted targets include:
+Manual selection:
 
 ```text
-active-window
-active-monitor
-monitor:3
-process:chrome
-window:DeFy Tickets
-desktop
+/models
+/model gemini:gemini-3.5-flash-lite
+/model openai:gpt-5-mini
+/model mistral:mistral-small-2603
 ```
 
-## Safe default configuration
+Model availability comes from each provider's models endpoint when its key and SDK are configured. Only use image-capable models for desktop planning.
 
-```env
-WINDOWS_AGENT_TARGET=monitor:3
-WINDOWS_AGENT_CONTROL_MODE=auto
-WINDOWS_AGENT_BROWSER_BACKEND=isolated
-WINDOWS_AGENT_CONFLICT_POLICY=cooperative
-WINDOWS_AGENT_PHYSICAL_INPUT_POLICY=deny
-WINDOWS_AGENT_STRICT_CAPTURE_ALIGNMENT=true
-WINDOWS_AGENT_MOVE_BOUND_WINDOW_TO_MONITOR=true
-WINDOWS_AGENT_OVERLAY_ENABLED=true
+## Dedicated monitor and independent input
+
+Recommended settings:
+
+```text
+/set target monitor:3
+/set control browser
+/set physical deny
+/set overlay on
 ```
 
-In this mode, unsupported physical interaction fails closed rather than taking your mouse or keyboard.
+For browser tasks, Playwright uses a page-level virtual mouse and keyboard; your physical pointer and keyboard remain yours. Desktop applications use UI Automation first. Physical fallback is denied unless you change the policy.
 
-## Overlay test
+## Overlay safety
 
-Test the monitor border without calling an AI provider:
+The overlay is a separate process. It creates only:
 
-```bash
-windows-agent overlay-test --target monitor:3 --seconds 8
+- four thin border-strip windows;
+- one small status badge;
+- one small virtual-cursor badge.
+
+It never creates a monitor-sized transparent Tk window, so transparency failure cannot turn the assigned monitor black. Keeping Tk in a dedicated process also prevents `Tcl_AsyncDelete` cross-thread shutdown errors.
+
+Disable it at any time:
+
+```text
+/set overlay off
 ```
 
-The overlay uses thin border windows and a small status/cursor badge; it must never cover the controlled monitor with an opaque surface.
+## Deterministic smoke testing
 
-## Evidence and logs
+A site smoke test is a tool operation rather than a series of guessed clicks. It inventories unique same-origin links, skips duplicates, visits each URL in isolated pages, records response and browser errors, saves screenshots, writes a report and completes directly from tool evidence.
 
-Every task creates:
+The vision completion verifier is not asked to find a JSON report inside the webpage after the deterministic tool has already succeeded.
+
+## Evidence
+
+Every task writes:
 
 ```text
 runs/<run-id>/
@@ -220,34 +162,21 @@ runs/<run-id>/
 ├── screens/
 └── browser-smoke/
     ├── smoke-report.json
-    └── smoke-report.html
+    └── *.png
 ```
 
-Useful commands:
+## Configuration
 
-```bash
-windows-agent logs
-windows-agent show-log RUN_ID
-windows-agent inspect --target monitor:3 --output inspection.json
-```
+Copy `.env.example` only for non-secret settings. Prefer `/key set` for credentials.
 
-## Safety
-
-- Move the pointer to the top-left corner for the PyAutoGUI fail-safe.
-- Press Ctrl+C to cancel the current task.
-- Use `WINDOWS_AGENT_PHYSICAL_INPUT_POLICY=deny` while doing other work.
-- Do not use the agent for passwords, payments, destructive administration, or irreversible actions.
-- Browser and UI Automation backends are preferred over shared physical input.
-- The tool is supervised automation, not a trustworthy autonomous administrator.
-
-Read [Safety](docs/SAFETY.md) and [Troubleshooting](docs/TROUBLESHOOTING.md) before expanding tools.
+Legacy `AGENT_OS_*` variables and the `agent-os` executable are no longer supported.
 
 ## Development
 
 ```bash
+python -m compileall src tests
 pytest
 ruff check .
-python -m compileall src tests
 ```
 
-Internal Python imports remain under `agent_os` in v0.5 for compatibility. The public distribution, command, documentation and runtime namespace are now Windows Agent.
+See `docs/ARCHITECTURE.md`, `docs/TERMINAL_UI.md`, `docs/MODEL_ROUTING.md`, `docs/SAFETY.md`, `docs/TROUBLESHOOTING.md`, and `MIGRATION_V0.6.md`.

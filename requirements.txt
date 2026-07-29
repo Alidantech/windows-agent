@@ -1,1 +1,16 @@
--e .
+google-genai>=2.7.0,<3.0.0
+keyring>=25.6.0,<26.0.0
+mss>=10.0.0,<11.0.0
+Pillow==11.1.0
+playwright>=1.54.0,<2.0.0
+prompt-toolkit>=3.0.52,<4.0.0
+pyautogui>=0.9.54,<0.10.0
+pyperclip>=1.9.0,<2.0.0
+pywinauto==0.6.8
+pywin32>=306
+psutil>=6.1.0,<8.0.0
+pydantic>=2.11.0,<3.0.0
+pydantic-settings>=2.10.0,<3.0.0
+python-dotenv==1.0.1
+PyYAML>=6.0.2,<7.0.0
+rich>=14.0.0,<15.0.0

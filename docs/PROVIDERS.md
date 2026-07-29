@@ -1,61 +1,46 @@
 # AI providers
 
-Windows Agent separates desktop control from model access. The control engine does not know whether a decision came from Gemini, OpenAI, Mistral, or a custom provider; it only consumes the validated `AgentDecision` and `TaskVerification` models.
+Windows Agent separates the control engine from the vision planner. The control engine consumes validated `AgentDecision` and `TaskVerification` objects and does not depend on a specific provider SDK.
 
-## Built-in providers
+## Interactive selection
 
-| Provider | Configuration | Install |
-|---|---|---|
-| Gemini | `WINDOWS_AGENT_PROVIDER=gemini`, `GEMINI_API_KEY` | Included in the base install |
-| OpenAI | `WINDOWS_AGENT_PROVIDER=openai`, `OPENAI_API_KEY` | `python -m pip install -e ".[openai]"` |
-| Mistral | `WINDOWS_AGENT_PROVIDER=mistral`, `MISTRAL_API_KEY` | `python -m pip install -e ".[mistral]"` |
-
-Set the model generically:
-
-```env
-WINDOWS_AGENT_PROVIDER=openai
-WINDOWS_AGENT_MODEL=gpt-5-mini
-OPENAI_API_KEY=...
-```
-
-Provider-specific model variables remain supported as fallbacks:
-
-```env
-GEMINI_MODEL=gemini-3.5-flash-lite
-OPENAI_MODEL=gpt-5-mini
-MISTRAL_MODEL=mistral-small-latest
-```
-
-`WINDOWS_AGENT_MODEL` takes precedence.
-
-## Runtime selection
-
-Global provider options must appear before the command:
+Start the persistent console:
 
 ```bash
-windows-agent --provider openai --model gpt-5-mini run \
-  "Open example.com" \
-  --target monitor:3
+windows-agent
 ```
 
-List provider installation status:
-
-```bash
-windows-agent providers
-```
-
-## Architecture
+Then use:
 
 ```text
-DesktopAgent
-  └── PlannerProvider protocol
-      ├── GeminiPlanner
-      ├── OpenAIPlanner
-      ├── MistralPlanner
-      └── custom provider
+/key status
+/key set gemini
+/key set openai
+/key set mistral
+/models
+/model auto
+/model gemini:gemini-3.5-flash-lite
 ```
 
-Every provider must implement:
+There are no provider/model command-line arguments in v0.6.
+
+## Built-in adapters
+
+| Provider | Base installation | Credential | Default route |
+|---|---|---|---|
+| Gemini | Included | `GEMINI_API_KEY` or `/key set gemini` | `gemini-3.5-flash-lite` |
+| OpenAI | `pip install -e ".[openai]"` | `OPENAI_API_KEY` or `/key set openai` | `gpt-5-mini` |
+| Mistral | `pip install -e ".[mistral]"` | `MISTRAL_API_KEY` or `/key set mistral` | `mistral-small-2603` |
+
+Keys entered interactively are masked and stored with `keyring` in Windows Credential Manager. Environment variables remain supported for unattended execution.
+
+## Auto routing
+
+`/model auto` builds an ordered list from `WINDOWS_AGENT_AUTO_MODELS`. A rate-limit, quota, overload, transient server, connection, DNS or timeout error can place the current route in cooldown and send the exact same prompt and image to the next ready route.
+
+The prompt already includes the current task, screenshot/capture token, control lease, action history, tool results, user guidance and bounded persistent session context. Switching providers therefore does not reset the task.
+
+## Provider contract
 
 ```python
 class PlannerProvider(Protocol):
@@ -64,15 +49,8 @@ class PlannerProvider(Protocol):
 
     def plan(self, prompt: str, image_bytes: bytes) -> tuple[AgentDecision, str]: ...
     def verify(self, prompt: str, image_bytes: bytes) -> tuple[TaskVerification, str]: ...
+    def list_models(self) -> list[ModelInfo]: ...
     def close(self) -> None: ...
 ```
 
-Providers are registered through `agent_os.providers.register_provider`. Imports are lazy, so selecting Gemini does not require the OpenAI or Mistral SDK.
-
-## Compatibility
-
-- `windows-agent` is the primary CLI.
-- `agent-os` remains as a temporary command alias.
-- `WINDOWS_AGENT_*` is the primary environment prefix.
-- Existing `AGENT_OS_*` values are promoted automatically when the corresponding `WINDOWS_AGENT_*` variable is absent.
-- Internal Python imports remain under `agent_os` for package compatibility in v0.5.
+Factories are lazy so an unselected optional SDK is not imported. `/models` queries each configured provider's model endpoint and reports missing keys or SDKs without terminating the console.

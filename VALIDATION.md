@@ -1,19 +1,14 @@
 # Validation
 
-Validated in the build environment on 2026-07-29:
+Windows Agent v0.6 was validated in the packaging environment with:
 
-- Python source and tests compile with `python -m compileall -q src tests`.
-- 31 unit tests pass with `pytest -q`.
-- CLI help loads and exposes the v0.3 commands and runtime policy options.
-- Project metadata parses as version 0.3.0.
-- Skill front matter parses and selects browser/smoke-testing skills for website tasks.
+```text
+python -m compileall src tests
+pytest
+```
 
-The build environment is Linux, so these behaviors could not be executed end-to-end here:
+Result: 48 tests passed.
 
-- Win32 HWND discovery and `PrintWindow` capture;
-- physical multi-monitor placement;
-- click-through Windows overlay behavior;
-- visible Playwright browser launch on the user's Windows machine;
-- UI Automation invocation against the user's installed applications.
+The tests cover cancellation, deterministic completion, monitor geometry, targeting, browser link inventory, safety rules, provider candidate parsing, secure credential fallback, context-preserving model switching, persistent session memory and slash-command availability.
 
-Those platform-specific paths include runtime diagnostics and fail closed when screenshot/action alignment cannot be proven.
+The packaging environment is not a Windows GUI session. The separate-process Tk overlay, Windows Credential Manager backend, Playwright window placement and prompt rendering must receive a supervised smoke test on the target Windows machine.
