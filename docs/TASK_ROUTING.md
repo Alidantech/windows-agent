@@ -64,6 +64,8 @@ The planner is not allowed to invent or guess:
 
 When a required value was not explicitly supplied by the user, the loop pauses and changes the persistent prompt to `answer ❯` or `secret ❯`. Sensitive answers are masked and are not written to prompt history.
 
+Passwords, PINs, OTPs, MFA codes, and verification codes are placed in a local one-session vault. The model receives only the token `__WINDOWS_AGENT_SECRET__`; the tool executor substitutes the real value immediately before input. The value is cleared when the task ends and is never added to model-visible context or action history.
+
 Terms, privacy policies, marketing consent, subscriptions, and other legal consent require an explicit user response such as `I agree`. CAPTCHA and human-verification controls require user takeover; Windows Agent does not attempt to bypass them.
 
 ## Completion rules
