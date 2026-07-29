@@ -6,11 +6,13 @@ import queue
 import shlex
 import sys
 import threading
+from collections.abc import Callable
 from dataclasses import dataclass
 
 from prompt_toolkit import PromptSession
 from prompt_toolkit.auto_suggest import AutoSuggestFromHistory
 from prompt_toolkit.completion import FuzzyWordCompleter
+from prompt_toolkit.filters import Condition
 from prompt_toolkit.formatted_text import HTML
 from prompt_toolkit.history import FileHistory
 from prompt_toolkit.patch_stdout import patch_stdout
@@ -20,6 +22,7 @@ from agent_os.agent import DesktopAgent
 from agent_os.cancellation import AgentCancelled
 from agent_os.catalog import list_models
 from agent_os.config import load_settings, parse_model_ref
+from agent_os.intent import IntentRouter
 from agent_os.secrets import secret_store
 from agent_os.session import QuestionBroker, SessionMemory
 from agent_os.terminal_ui import UIState, console, ui
@@ -41,6 +44,19 @@ COMMANDS = {
 }
 
 
+class SafeFileHistory(FileHistory):
+    """Do not keep password, OTP, PIN, or other masked answers in history."""
+
+    def __init__(self, filename: str, sensitive: Callable[[], bool]) -> None:
+        super().__init__(filename)
+        self._sensitive = sensitive
+
+    def append_string(self, string: str) -> None:
+        if self._sensitive():
+            return
+        super().append_string(string)
+
+
 @dataclass(frozen=True)
 class TaskRequest:
     text: str
@@ -52,8 +68,10 @@ class WindowsAgentShell:
         self.agent = DesktopAgent(self.settings)
         self.memory = SessionMemory(self.settings.session_history_limit)
         self.questions = QuestionBroker(self.agent.cancellation)
+        self.intent = IntentRouter()
         self.tasks: queue.Queue[TaskRequest | None] = queue.Queue()
         self._current: str | None = None
+        self._current_kind: str | None = None
         self._shutdown = threading.Event()
         self._model_dirty = False
         self._worker = threading.Thread(
@@ -61,9 +79,13 @@ class WindowsAgentShell:
             name="windows-agent-task-worker",
             daemon=True,
         )
-        history = self.settings.state_dir / "prompt-history.txt"
+        history_path = self.settings.state_dir / "prompt-history.txt"
+        history = SafeFileHistory(
+            str(history_path),
+            lambda: self.questions.pending_sensitive,
+        )
         self.prompt = PromptSession(
-            history=FileHistory(str(history)),
+            history=history,
             auto_suggest=AutoSuggestFromHistory(),
             completer=FuzzyWordCompleter(list(COMMANDS), WORD=True),
             complete_while_typing=True,
@@ -86,11 +108,12 @@ class WindowsAgentShell:
 
     def _prompt_message(self) -> HTML:
         if self.questions.pending_question:
-            return HTML("<ansigreen>answer</ansigreen> <b>❯</b> ")
+            label = "secret" if self.questions.pending_sensitive else "answer"
+            return HTML(f"<ansigreen>{label}</ansigreen> <b>❯</b> ")
         return HTML("<ansicyan>you</ansicyan> <b>❯</b> ")
 
     def _bottom_toolbar(self) -> HTML:
-        current = "working" if self.busy else "idle"
+        current = self._current_kind or ("working" if self.busy else "idle")
         queued = self.tasks.qsize()
         route = getattr(self.agent.planner, "current_label", "auto")
         return HTML(
@@ -118,20 +141,48 @@ class WindowsAgentShell:
             if request is None:
                 return
             self._current = request.text
+            intent = self.intent.route(
+                request.text,
+                browser_active=self.agent.browser.active,
+                app_aliases=tuple(self.agent.launcher.available_aliases()),
+            )
+            self._current_kind = "chat" if intent.kind == "conversation" else "working"
             self._invalidate()
             try:
-                outcome = self.agent.run(
-                    request.text,
-                    self.settings.target,
-                    interactive=True,
-                    ask_user=self.questions.ask,
-                    session_context=self.memory.context(),
-                )
-                self.memory.add(request.text, outcome.success, outcome.summary, outcome.run_id)
-                if outcome.success:
-                    ui.complete(outcome.summary, outcome.run_dir)
+                ui.route(intent.kind, intent.reason)
+                if intent.kind == "conversation":
+                    response = self.agent.respond(
+                        request.text,
+                        self.memory.context(),
+                    )
+                    self.memory.add(
+                        request.text,
+                        True,
+                        response,
+                        "conversation",
+                        kind="conversation",
+                    )
+                    ui.chat_response(response)
                 else:
-                    ui.failed(outcome.summary, outcome.run_dir)
+                    outcome = self.agent.run(
+                        request.text,
+                        self.settings.target,
+                        interactive=True,
+                        ask_user=self.questions.ask,
+                        session_context=self.memory.context(),
+                        continue_browser=intent.continue_browser,
+                    )
+                    self.memory.add(
+                        request.text,
+                        outcome.success,
+                        outcome.summary,
+                        outcome.run_id,
+                        kind="desktop",
+                    )
+                    if outcome.success:
+                        ui.complete(outcome.summary, outcome.run_dir)
+                    else:
+                        ui.failed(outcome.summary, outcome.run_dir)
             except AgentCancelled:
                 ui.notice("Task cancelled.", "yellow")
             except KeyboardInterrupt:
@@ -143,6 +194,7 @@ class WindowsAgentShell:
                     self.agent.rebuild_planner()
                     self._model_dirty = False
                 self._current = None
+                self._current_kind = None
                 self.questions.cancel()
                 self._invalidate()
 
@@ -172,7 +224,11 @@ class WindowsAgentShell:
 
     def _show_models(self, provider: str | None = None) -> None:
         with ui.thinking("Loading provider models…"):
-            models, errors = list_models(self.settings, self.agent.prompts, provider)
+            models, errors = list_models(
+                self.settings,
+                self.agent.prompts,
+                provider,
+            )
         table = Table(title="Available models", box=None)
         table.add_column("Provider", style="cyan")
         table.add_column("Model")
@@ -198,7 +254,11 @@ class WindowsAgentShell:
             table.add_column("Configured")
             table.add_column("Source", style="dim")
             for item in secret_store.statuses():
-                table.add_row(item.provider, "yes" if item.configured else "no", item.source or "—")
+                table.add_row(
+                    item.provider,
+                    "yes" if item.configured else "no",
+                    item.source or "—",
+                )
             console.print(table)
             return
         if len(args) < 2:
@@ -212,17 +272,24 @@ class WindowsAgentShell:
                 is_password=True,
             )
             secret_store.set(provider, secret)
-            ui.result(True, f"Stored {provider} key in Windows Credential Manager.")
+            ui.result(
+                True,
+                f"Stored {provider} key in Windows Credential Manager.",
+            )
         elif action == "delete":
             secret_store.delete(provider)
-            ui.result(True, f"Deleted stored {provider} key. Environment variables are unchanged.")
+            ui.result(
+                True,
+                f"Deleted stored {provider} key. Environment variables are unchanged.",
+            )
         else:
             ui.notice("Unknown /key action.", "red")
 
     def _set_command(self, args: list[str]) -> None:
         if len(args) < 2:
             ui.notice(
-                "Use /set target VALUE, /set control VALUE, /set physical VALUE or /set overlay on|off.",
+                "Use /set target VALUE, /set control VALUE, /set physical VALUE "
+                "or /set overlay on|off.",
                 "red",
             )
             return
@@ -247,9 +314,19 @@ class WindowsAgentShell:
         table.add_column("Status")
         table.add_column("Details", style="dim")
         table.add_row("Python", "OK", sys.version.split()[0])
-        table.add_row("Platform", "OK" if platform.system() == "Windows" else "FAILED", platform.platform())
+        table.add_row(
+            "Platform",
+            "OK" if platform.system() == "Windows" else "FAILED",
+            platform.platform(),
+        )
         for module in (
-            "prompt_toolkit", "rich", "keyring", "playwright.sync_api", "mss", "pywinauto", "win32gui",
+            "prompt_toolkit",
+            "rich",
+            "keyring",
+            "playwright.sync_api",
+            "mss",
+            "pywinauto",
+            "win32gui",
         ):
             try:
                 importlib.import_module(module)
@@ -289,9 +366,15 @@ class WindowsAgentShell:
             ui.command_table(list(COMMANDS.items()))
         elif command == "/status":
             ui.status(self._state(), self._current, self.tasks.qsize())
-            ui.queue(self._current, [item.text for item in list(self.tasks.queue) if item is not None])
+            ui.queue(
+                self._current,
+                [item.text for item in list(self.tasks.queue) if item is not None],
+            )
         elif command == "/queue":
-            ui.queue(self._current, [item.text for item in list(self.tasks.queue) if item is not None])
+            ui.queue(
+                self._current,
+                [item.text for item in list(self.tasks.queue) if item is not None],
+            )
         elif command == "/cancel":
             self.cancel()
         elif command == "/models":
@@ -316,7 +399,10 @@ class WindowsAgentShell:
                 ui.result(True, "Session memory cleared.")
             else:
                 for item in self.memory.context():
-                    console.print(f"[dim]⎿[/dim] {item['task']} → {item['summary']}")
+                    console.print(
+                        f"[dim]⎿[/dim] {item['kind']} · {item['task']} → "
+                        f"{item['summary']}"
+                    )
         elif command == "/clear":
             console.clear()
             ui.banner(self._state())
@@ -344,18 +430,23 @@ class WindowsAgentShell:
         ui.banner(self._state())
         self._worker.start()
         running = True
+        password_filter = Condition(lambda: self.questions.pending_sensitive)
         with patch_stdout(raw=True):
             while running:
                 try:
                     text = self.prompt.prompt(
-                        self._prompt_message(),
-                        bottom_toolbar=self._bottom_toolbar(),
+                        self._prompt_message,
+                        bottom_toolbar=self._bottom_toolbar,
+                        is_password=password_filter,
                     )
                 except KeyboardInterrupt:
                     if self.busy:
                         self.cancel()
                         continue
-                    ui.notice("Use /exit to close. Ctrl+C cancels only an active task.", "dim")
+                    ui.notice(
+                        "Use /exit to close. Ctrl+C cancels only an active task.",
+                        "dim",
+                    )
                     continue
                 except EOFError:
                     break
@@ -381,7 +472,10 @@ class WindowsAgentShell:
 def main() -> None:
     if len(sys.argv) > 1:
         if sys.argv[1] in {"-h", "--help"}:
-            print("Run `windows-agent` with no arguments, then use /help inside the persistent console.")
+            print(
+                "Run `windows-agent` with no arguments, then use /help "
+                "inside the persistent console."
+            )
             raise SystemExit(0)
         print(
             "Windows Agent no longer accepts task/provider arguments. "
