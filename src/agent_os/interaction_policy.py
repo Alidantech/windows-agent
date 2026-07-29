@@ -2,9 +2,12 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
-from agent_os.capture import CapturedObservation
 from agent_os.models import AgentDecision, UIElement
+
+if TYPE_CHECKING:
+    from agent_os.capture import CapturedObservation
 
 
 @dataclass(frozen=True)
