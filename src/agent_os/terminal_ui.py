@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from rich.console import Console
+from rich.markdown import Markdown
 from rich.panel import Panel
 from rich.status import Status
 from rich.table import Table
@@ -21,7 +22,7 @@ class UIState:
 
 
 class TerminalUI:
-    """Claude-style continuous terminal feed with stable relationship glyphs."""
+    """Continuous terminal feed with stable action/result relationships."""
 
     def banner(self, state: UIState) -> None:
         title = Text("windows-agent", style="bold cyan")
@@ -38,7 +39,7 @@ class TerminalUI:
             )
         )
         console.print(
-            "[dim]Type a task, or /help for commands. "
+            "[dim]Ask a question or describe a computer task. "
             "Ctrl+C cancels the current task.[/dim]\n"
         )
 
@@ -64,8 +65,22 @@ class TerminalUI:
     def assistant(self, text: str) -> None:
         console.print(f"[cyan]⏺[/cyan] {text}")
 
+    def route(self, kind: str, reason: str) -> None:
+        style = "blue" if kind == "conversation" else "cyan"
+        label = "terminal response" if kind == "conversation" else "desktop task"
+        console.print(
+            f"[dim]  ⎿ route[/dim] [{style}]{label}[/{style}] "
+            f"[dim]· {reason}[/dim]"
+        )
+
+    def chat_response(self, text: str) -> None:
+        console.print("\n[blue]⏺ assistant[/blue]")
+        console.print(Markdown(text))
+
     def action(self, step: int, limit: int, action: str, reason: str) -> None:
-        console.print(f"\n[cyan]⏺[/cyan] [bold]{action}[/bold] [dim]({step}/{limit})[/dim]")
+        console.print(
+            f"\n[cyan]⏺[/cyan] [bold]{action}[/bold] [dim]({step}/{limit})[/dim]"
+        )
         console.print(f"  [dim]⎿[/dim] {reason}")
 
     def result(self, ok: bool, summary: str, *, label: str | None = None) -> None:
@@ -73,7 +88,12 @@ class TerminalUI:
         style = "green" if ok else "red"
         console.print(f"  [dim]⎿[/dim] [{style}]{status}[/{style}] {summary}")
 
-    def observation(self, label: str, details: str, screenshot: Path | str | None = None) -> None:
+    def observation(
+        self,
+        label: str,
+        details: str,
+        screenshot: Path | str | None = None,
+    ) -> None:
         console.print(f"[dim]  ⎿ seeing {label} · {details}[/dim]")
         if screenshot:
             console.print(f"[dim]    screenshot {screenshot}[/dim]")
@@ -102,7 +122,12 @@ class TerminalUI:
             console.print(f"  [dim]⎿ evidence {run_dir}[/dim]")
 
     def queue(self, current: str | None, pending: list[str]) -> None:
-        table = Table(title="Task queue", box=None, show_header=True, header_style="dim")
+        table = Table(
+            title="Task queue",
+            box=None,
+            show_header=True,
+            header_style="dim",
+        )
         table.add_column("State", width=10)
         table.add_column("Task")
         if current:
@@ -113,7 +138,11 @@ class TerminalUI:
             table.add_row("idle", "No queued tasks")
         console.print(table)
 
-    def command_table(self, rows: list[tuple[str, str]], title: str = "Commands") -> None:
+    def command_table(
+        self,
+        rows: list[tuple[str, str]],
+        title: str = "Commands",
+    ) -> None:
         table = Table(title=title, box=None, show_header=False)
         table.add_column(style="cyan", no_wrap=True)
         table.add_column(style="dim")
