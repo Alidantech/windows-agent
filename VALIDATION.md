@@ -21,8 +21,11 @@ The v0.6 runtime suite previously passed 48 tests. The current task-routing chan
 - permitting explicitly supplied values;
 - explicit terms consent;
 - CAPTCHA user takeover;
-- sensitive-question detection.
+- sensitive-question detection;
+- masked local-value token routing;
+- field-scoped value matching;
+- clearing locally held values after task cleanup.
 
-The seven standalone intent-routing tests passed in the packaging environment. All changed Python files passed bytecode compilation. The complete repository suite and Ruff check must be run with `uv run pytest` and `uv run ruff check .` after pulling because the packaging environment could not resolve the full Windows project dependency graph.
+The focused routing, interaction-policy, and local-value suite passed 12 tests in the packaging environment. All changed Python files passed bytecode compilation. The complete repository suite and Ruff check must be run with `uv run pytest` and `uv run ruff check .` after pulling because the packaging environment could not resolve the full Windows project dependency graph.
 
-The packaging environment is not a Windows GUI session. The separate-process Tk overlay, Windows Credential Manager backend, Playwright window placement, prompt rendering, sensitive answer masking, persistent-browser continuation, and fresh post-submit capture require a supervised smoke test on the target Windows machine.
+The packaging environment is not a Windows GUI session. The separate-process Tk overlay, Windows Credential Manager backend, Playwright window placement, prompt rendering, masked local-value entry, persistent-browser continuation, and fresh post-submit capture require a supervised smoke test on the target Windows machine.
