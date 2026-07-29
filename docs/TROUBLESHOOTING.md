@@ -38,6 +38,43 @@ uv lock --check
 uv sync --locked
 ```
 
+## A greeting or question starts taking screenshots
+
+Pull the latest `master`, synchronize, and restart the persistent console:
+
+```bash
+git pull origin master
+uv sync
+uv run windows-agent
+```
+
+Greetings and general questions should display a `route terminal response` line and return one direct answer. They should not create a run directory or invoke the desktop completion verifier.
+
+Questions that explicitly require observing or controlling the computer still use the desktop route, for example:
+
+```text
+What is visible on monitor 3?
+Can you open Chrome?
+```
+
+## A follow-up task starts from the monitor instead of the existing browser
+
+Browser continuations now bind the persistent isolated browser before the first screenshot. Keep the same Windows Agent console open between tasks. Follow-ups such as `continue`, `create an account and proceed`, `fill the form`, and `log in` should show a browser-backed observation immediately.
+
+## The agent invents account details
+
+Windows Agent must pause before entering missing names, email addresses, phone numbers, addresses, usernames, company names, dates of birth, passwords, PINs, or verification codes. Provide each requested value through `answer ❯` or masked `secret ❯`.
+
+Terms, privacy policies, subscriptions, and marketing consent require an explicit `I agree`. CAPTCHA and human-verification steps require you to complete the challenge in the assigned browser and then type `done`.
+
+Sensitive answers are masked and skipped by prompt history.
+
+## The agent repeatedly claims completion
+
+Browser completion is checked against a fresh post-action capture. Unsupported completion claims are limited by `WINDOWS_AGENT_MAX_COMPLETION_REJECTIONS`, which defaults to `2`. After that limit, the task stops honestly instead of consuming all 40 steps.
+
+A transition to an email-verification page proves form submission, but the account is not fully verified. The expected next behavior is an `ask_user` prompt for the verification code.
+
 ## The assigned monitor becomes black
 
 Windows Agent v0.6 never creates a monitor-sized overlay. The overlay is a separate process containing only four thin border strips and two small badges. If a stale black surface remains from an older release, close the old process from another terminal:
