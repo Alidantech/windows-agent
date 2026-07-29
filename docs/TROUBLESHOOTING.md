@@ -1,5 +1,43 @@
 # Troubleshooting
 
+## `uv` is not found
+
+Install uv with WinGet:
+
+```powershell
+winget install --id=astral-sh.uv -e
+```
+
+Or use the official installer:
+
+```powershell
+powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
+```
+
+Close and reopen the terminal, then run `uv --version`.
+
+## Dependency or environment problems
+
+Do not activate or modify `.venv` manually. Resynchronize exactly from project metadata:
+
+```bash
+uv sync
+```
+
+For a completely fresh local environment:
+
+```bash
+rm -rf .venv
+uv sync
+```
+
+After `uv.lock` is committed, validate it with:
+
+```bash
+uv lock --check
+uv sync --locked
+```
+
 ## The assigned monitor becomes black
 
 Windows Agent v0.6 never creates a monitor-sized overlay. The overlay is a separate process containing only four thin border strips and two small badges. If a stale black surface remains from an older release, close the old process from another terminal:
@@ -9,7 +47,7 @@ taskkill //F //IM agent-os.exe //T 2>/dev/null || true
 taskkill //F //IM windows-agent.exe //T 2>/dev/null || true
 ```
 
-Restart `windows-agent` and use `/set overlay off` to confirm that an overlay is the source. `/set overlay on` enables the new process-isolated border again.
+Restart with `uv run windows-agent` and use `/set overlay off` to confirm that an overlay is the source. `/set overlay on` enables the process-isolated border again.
 
 ## Ctrl+C does not appear to stop a task
 
@@ -25,12 +63,19 @@ Inside the console, run `/key status` and `/models`. Store a provider key with `
 
 ## A model reaches a rate limit
 
-Keep `/model auto` selected. Windows Agent sends the same task prompt, screenshot, run history and session context to the next configured route. Daily quota failures receive a long cooldown; transient limits use the configured cooldown.
+Keep `/model auto` selected. Windows Agent sends the same task prompt, screenshot, run history, and session context to the next configured route. Daily quota failures receive a long cooldown; transient limits use the configured cooldown.
 
 ## The browser is missing
 
-Run `python -m playwright install chromium`, restart `windows-agent`, then run `/doctor`.
+Run:
+
+```bash
+uv run playwright install chromium
+uv run windows-agent
+```
+
+Then use `/doctor` inside the console.
 
 ## Screenshots and the controlled target differ
 
-Strict alignment is enabled by default. The capture token, lease generation and target identity must agree before any action is executed. Use `/set target monitor:3` for a dedicated monitor.
+Strict alignment is enabled by default. The capture token, lease generation, and target identity must agree before any action is executed. Use `/set target monitor:3` for a dedicated monitor.
