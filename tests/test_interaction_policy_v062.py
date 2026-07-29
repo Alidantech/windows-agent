@@ -35,6 +35,8 @@ def test_blocks_invented_email():
     )
     assert intervention is not None
     assert "email" in intervention.question.lower()
+    assert intervention.sensitive is True
+    assert intervention.mode == "replace_text"
 
 
 def test_allows_user_supplied_email():
@@ -67,6 +69,7 @@ def test_requires_explicit_terms_consent():
     )
     assert intervention is not None
     assert "type 'i agree'" in intervention.question.lower()
+    assert intervention.mode == "confirm_action"
 
 
 def test_requires_user_takeover_for_captcha():
@@ -83,6 +86,7 @@ def test_requires_user_takeover_for_captcha():
     )
     assert intervention is not None
     assert "yourself" in intervention.question.lower()
+    assert intervention.mode == "manual"
 
 
 def test_sensitive_question_detection():
