@@ -4,7 +4,6 @@ import html
 import json
 import time
 from pathlib import Path
-from typing import Any
 from urllib.parse import urlparse
 
 from agent_os.browser import BrowserController as BaseBrowserController

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import re
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -50,7 +50,7 @@ class RunLogger:
 
     @staticmethod
     def _now() -> str:
-        return datetime.now(timezone.utc).isoformat()
+        return datetime.now(UTC).isoformat()
 
     def _write_manifest(self, data: dict[str, Any]) -> None:
         self.manifest_path.write_text(

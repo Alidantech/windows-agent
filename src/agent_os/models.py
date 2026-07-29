@@ -31,7 +31,7 @@ class AgentDecision(BaseModel):
     max_links: int | None = Field(default=None, ge=1, le=250)
 
     @model_validator(mode="after")
-    def validate_action_fields(self) -> "AgentDecision":
+    def validate_action_fields(self) -> AgentDecision:
         if self.action in {"click", "double_click", "right_click", "move"} and (
             self.x is None or self.y is None
         ):
@@ -88,7 +88,7 @@ class Rectangle(BaseModel):
     def contains(self, x: int | float, y: int | float) -> bool:
         return self.left <= x < self.right and self.top <= y < self.bottom
 
-    def intersection_area(self, other: "Rectangle") -> int:
+    def intersection_area(self, other: Rectangle) -> int:
         width = max(0, min(self.right, other.right) - max(self.left, other.left))
         height = max(0, min(self.bottom, other.bottom) - max(self.top, other.top))
         return width * height

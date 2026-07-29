@@ -3,7 +3,7 @@ from __future__ import annotations
 import queue
 import threading
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from agent_os.cancellation import CancellationToken
 from agent_os.interaction_policy import question_is_sensitive
@@ -40,7 +40,7 @@ class SessionMemory:
                 success=success,
                 summary=summary,
                 run_id=run_id,
-                timestamp=datetime.now(timezone.utc).isoformat(),
+                timestamp=datetime.now(UTC).isoformat(),
                 kind=kind,
             )
         )

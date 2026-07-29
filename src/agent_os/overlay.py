@@ -60,6 +60,7 @@ def _configure_window(window: Any) -> None:
     window.update_idletasks()
     try:
         import ctypes
+
         import win32con
         import win32gui
 
