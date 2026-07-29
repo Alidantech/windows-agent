@@ -93,7 +93,7 @@ class QuestionBroker:
                     self._question = None
                     self._sensitive = False
                 if was_sensitive:
-                    local_value_vault.set(answer)
+                    local_value_vault.set(answer, purpose=question)
                     return LOCAL_VALUE_TOKEN
                 return answer
             except queue.Empty:
