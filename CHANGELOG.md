@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased
+
+- Added deterministic intent routing so greetings and general questions are answered in the terminal without screenshots or the desktop completion verifier.
+- Added persistent-browser continuation routing for follow-up tasks such as account creation, form completion, login, and verification.
+- Added user-data gates that prevent the planner from inventing names, email addresses, phone numbers, addresses, usernames, passwords, PINs, OTPs, or other identity details.
+- Added explicit confirmation before accepting terms, privacy policies, subscriptions, marketing consent, or other legal consent.
+- Added user takeover for CAPTCHA and human-verification controls.
+- Added masked prompt input and history suppression for passwords, OTPs, PINs, API keys, and verification codes.
+- Added a fresh post-action browser capture before completion verification.
+- Bounded rejected completion claims so an unsupported `done` response cannot consume the full step budget.
+- Updated system and verifier prompts to distinguish terminal conversation, actionable computer work, deterministic evidence, and verification checkpoints.
+
 ## 0.6.1
 
 - Replaced manual virtual-environment and pip setup with an uv-only project workflow.
