@@ -17,9 +17,18 @@ class UserIntervention:
 class InteractionPolicy:
     """Require explicit user input for identity, credentials, and consent."""
 
-    _PASSWORD = re.compile(r"\b(?:password|passcode|security\s+answer|secret\s+answer|pin)\b", re.I)
+    _PASSWORD = re.compile(
+        r"\b(?:password|passcode|security\s+answer|secret\s+answer|pin)\b",
+        re.I,
+    )
     _OTP = re.compile(
-        r"\b(?:otp|one[- ]time|verification\s+code|security\s+code|auth(?:entication)?\s+code|2fa|mfa)\b",
+        r"\b(?:otp|one[- ]time|verification\s+code|security\s+code|"
+        r"auth(?:entication)?\s+code|2fa|mfa)\b",
+        re.I,
+    )
+    _HUMAN_CHECK = re.compile(
+        r"\b(?:captcha|re-?captcha|hcaptcha|i\s+am\s+not\s+a\s+robot|"
+        r"i'm\s+not\s+a\s+robot|human\s+verification)\b",
         re.I,
     )
     _PERSONAL_FIELDS: tuple[tuple[re.Pattern[str], str], ...] = (
@@ -45,15 +54,27 @@ class InteractionPolicy:
     )
 
     @staticmethod
-    def _element(observation: CapturedObservation, element_id: str | None) -> UIElement | None:
+    def _element(
+        observation: CapturedObservation,
+        element_id: str | None,
+    ) -> UIElement | None:
         if not element_id:
             return None
-        return next((item for item in observation.uia.elements if item.element_id == element_id), None)
+        return next(
+            (
+                item
+                for item in observation.uia.elements
+                if item.element_id == element_id
+            ),
+            None,
+        )
 
     @staticmethod
     def _value_was_supplied(value: str, corpus: str) -> bool:
         candidate = value.strip()
-        return bool(candidate) and (candidate in corpus or candidate.casefold() in corpus.casefold())
+        return bool(candidate) and (
+            candidate in corpus or candidate.casefold() in corpus.casefold()
+        )
 
     def required_intervention(
         self,
@@ -65,37 +86,59 @@ class InteractionPolicy:
     ) -> UserIntervention | None:
         element = self._element(observation, decision.element_id)
         element_name = " ".join(
-            part for part in (
+            part
+            for part in (
                 element.name if element else "",
                 element.control_type if element else "",
                 element.automation_id if element and element.automation_id else "",
-            ) if part
+            )
+            if part
         ).strip()
         corpus = "\n".join([task, *guidance])
 
+        if self._HUMAN_CHECK.search(element_name):
+            return UserIntervention(
+                "Complete the CAPTCHA or human-verification step yourself in the assigned "
+                "browser, then type 'done' here.",
+                guidance_label="CAPTCHA completed by user",
+            )
+
         if decision.action in {"fill_element", "type_text"} and decision.text is not None:
             label = element_name or "requested field"
-            if self._PASSWORD.search(label) and not self._value_was_supplied(decision.text, corpus):
+            if self._PASSWORD.search(label) and not self._value_was_supplied(
+                decision.text,
+                corpus,
+            ):
                 return UserIntervention(
-                    "Enter the password you want Windows Agent to use. The answer will be masked.",
+                    "Enter the password you want Windows Agent to use. "
+                    "The answer will be masked.",
                     sensitive=True,
                     guidance_label="Password supplied by user",
                 )
-            if self._OTP.search(label) and not self._value_was_supplied(decision.text, corpus):
+            if self._OTP.search(label) and not self._value_was_supplied(
+                decision.text,
+                corpus,
+            ):
                 return UserIntervention(
-                    "Enter the verification code shown or sent to you. The answer will be masked.",
+                    "Enter the verification code shown or sent to you. "
+                    "The answer will be masked.",
                     sensitive=True,
                     guidance_label="Verification code supplied by user",
                 )
             for pattern, friendly_name in self._PERSONAL_FIELDS:
-                if pattern.search(label) and not self._value_was_supplied(decision.text, corpus):
+                if pattern.search(label) and not self._value_was_supplied(
+                    decision.text,
+                    corpus,
+                ):
                     return UserIntervention(
                         f"What {friendly_name} should I enter?",
                         guidance_label=f"{friendly_name.title()} supplied by user",
                     )
 
         if decision.action == "click_element" and element is not None:
-            if self._CONSENT.search(element_name) and not self._EXPLICIT_CONSENT.search(corpus):
+            if self._CONSENT.search(element_name) and not self._EXPLICIT_CONSENT.search(
+                corpus
+            ):
                 return UserIntervention(
                     "This control accepts terms, privacy, subscription, or other consent. "
                     "Type 'I agree' only after reviewing it, or type 'no' to stop.",
@@ -105,9 +148,11 @@ class InteractionPolicy:
 
 
 def question_is_sensitive(question: str) -> bool:
-    return bool(re.search(
-        r"\b(?:password|passcode|pin|otp|verification\s+code|security\s+code|"
-        r"authentication\s+code|2fa|mfa|api\s+key|secret)\b",
-        question,
-        re.I,
-    ))
+    return bool(
+        re.search(
+            r"\b(?:password|passcode|pin|otp|verification\s+code|security\s+code|"
+            r"authentication\s+code|2fa|mfa|api\s+key|secret)\b",
+            question,
+            re.I,
+        )
+    )
