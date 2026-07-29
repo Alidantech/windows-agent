@@ -8,22 +8,23 @@ from dotenv import load_dotenv
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-ProviderName = Literal["gemini", "openai", "mistral"]
+from agent_os.secrets import secret_store
 
-CURRENT_ENV_PREFIX = "WINDOWS_AGENT_"
-LEGACY_ENV_PREFIX = "AGENT_OS_"
+ProviderName = Literal["auto", "gemini", "openai", "mistral"]
 
 DEFAULT_MODELS: dict[str, str] = {
     "gemini": "gemini-3.5-flash-lite",
     "openai": "gpt-5-mini",
-    "mistral": "mistral-small-latest",
+    "mistral": "mistral-small-2603",
 }
 
-PROVIDER_KEY_ENV: dict[str, str] = {
-    "gemini": "GEMINI_API_KEY",
-    "openai": "OPENAI_API_KEY",
-    "mistral": "MISTRAL_API_KEY",
-}
+DEFAULT_AUTO_MODELS: tuple[str, ...] = (
+    "gemini:gemini-3.5-flash-lite",
+    "gemini:gemini-3.6-flash",
+    "gemini:gemini-3.1-flash-lite",
+    "openai:gpt-5-mini",
+    "mistral:mistral-small-2603",
+)
 
 PROVIDER_MODEL_ENV: dict[str, str] = {
     "gemini": "GEMINI_MODEL",
@@ -34,19 +35,24 @@ PROVIDER_MODEL_ENV: dict[str, str] = {
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
-        env_prefix=CURRENT_ENV_PREFIX,
+        env_prefix="WINDOWS_AGENT_",
         env_file=".env",
         env_file_encoding="utf-8",
         extra="ignore",
     )
 
-    provider: ProviderName = "gemini"
-    model: str = ""
-    target: str = "active-window"
+    provider: ProviderName = "auto"
+    model: str = "auto"
+    auto_models: str = ""
+    auto_switch_models: bool = True
+    model_cooldown_seconds: int = Field(default=120, ge=5, le=86400)
+    max_provider_switches: int = Field(default=5, ge=0, le=20)
+
+    target: str = "monitor:1"
     max_steps: int = Field(default=40, ge=1, le=200)
     repeat_limit: int = Field(default=3, ge=2, le=10)
     step_delay_seconds: float = Field(default=0.8, ge=0.0, le=30.0)
-    api_retries: int = Field(default=3, ge=1, le=8)
+    api_retries: int = Field(default=2, ge=1, le=8)
     api_retry_base_seconds: float = Field(default=1.5, ge=0.1, le=20.0)
     api_timeout_ms: int = Field(default=30000, ge=3000, le=180000)
 
@@ -80,51 +86,69 @@ class Settings(BaseSettings):
     move_bound_window_to_monitor: bool = True
 
     overlay_enabled: bool = True
+    session_history_limit: int = Field(default=12, ge=1, le=100)
 
     runs_dir: Path = Path("runs")
+    state_dir: Path = Path(".windows-agent")
     prompts_dir: Path = Path("prompts")
     skills_dir: Path = Path("skills")
     app_aliases_file: Path = Path("config/apps.yml")
-
-
-def _promote_legacy_environment() -> None:
-    """Copy legacy AGENT_OS_* values into WINDOWS_AGENT_* when not overridden.
-
-    This lets existing v0.4 .env files continue working while all new examples
-    and documentation use the Windows Agent product name.
-    """
-
-    for name, value in tuple(os.environ.items()):
-        if not name.startswith(LEGACY_ENV_PREFIX):
-            continue
-        current_name = CURRENT_ENV_PREFIX + name[len(LEGACY_ENV_PREFIX) :]
-        os.environ.setdefault(current_name, value)
 
 
 def model_for_provider(provider: str) -> str:
     normalized = provider.strip().lower()
     if normalized not in DEFAULT_MODELS:
         choices = ", ".join(sorted(DEFAULT_MODELS))
-        raise RuntimeError(f"Unknown AI provider {provider!r}. Available providers: {choices}.")
-    provider_model = os.getenv(PROVIDER_MODEL_ENV[normalized], "").strip()
-    return provider_model or DEFAULT_MODELS[normalized]
+        raise RuntimeError(f"Unknown AI provider {provider!r}. Available: {choices}.")
+    configured = os.getenv(PROVIDER_MODEL_ENV[normalized], "").strip()
+    return configured or DEFAULT_MODELS[normalized]
 
 
-def _resolve_model(settings: Settings) -> str:
-    if settings.model.strip():
-        return settings.model.strip()
-    return model_for_provider(settings.provider)
+def parse_model_ref(value: str, default_provider: str | None = None) -> tuple[str, str]:
+    text = value.strip()
+    if ":" in text:
+        provider, model = text.split(":", 1)
+        return provider.strip().lower(), model.strip()
+    provider = (default_provider or "gemini").strip().lower()
+    return provider, text
+
+
+def configured_model_candidates(settings: Settings) -> list[tuple[str, str]]:
+    provider = settings.provider.strip().lower()
+    model = settings.model.strip()
+    if provider != "auto":
+        selected = model if model and model != "auto" else model_for_provider(provider)
+        candidates = [(provider, selected)]
+        if not settings.auto_switch_models:
+            return candidates
+        extras = settings.auto_models or ""
+        for item in (part.strip() for part in extras.split(",")):
+            if item:
+                candidate = parse_model_ref(item, provider)
+                if candidate not in candidates:
+                    candidates.append(candidate)
+        return candidates
+
+    raw = settings.auto_models.strip()
+    refs = [part.strip() for part in raw.split(",") if part.strip()] if raw else list(DEFAULT_AUTO_MODELS)
+    candidates: list[tuple[str, str]] = []
+    for ref in refs:
+        candidate = parse_model_ref(ref)
+        if candidate not in candidates:
+            candidates.append(candidate)
+    return candidates
 
 
 def load_settings() -> Settings:
     load_dotenv()
-    _promote_legacy_environment()
     settings = Settings()
-    settings.model = _resolve_model(settings)
+    if settings.provider != "auto" and (not settings.model.strip() or settings.model == "auto"):
+        settings.model = model_for_provider(settings.provider)
 
     project_root = Path(__file__).resolve().parents[2]
     for field_name in (
         "runs_dir",
+        "state_dir",
         "prompts_dir",
         "skills_dir",
         "app_aliases_file",
@@ -135,31 +159,19 @@ def load_settings() -> Settings:
             continue
         cwd_candidate = Path.cwd() / value
         project_candidate = project_root / value
-        if field_name == "browser_profile_dir":
+        if field_name in {"browser_profile_dir", "state_dir", "runs_dir"}:
             resolved = cwd_candidate
         else:
             resolved = cwd_candidate if cwd_candidate.exists() else project_candidate
         setattr(settings, field_name, resolved)
+    settings.state_dir.mkdir(parents=True, exist_ok=True)
     return settings
 
 
 def provider_api_key(provider: str) -> str:
-    load_dotenv()
-    normalized = provider.strip().lower()
-    env_name = PROVIDER_KEY_ENV.get(normalized)
-    if env_name is None:
-        choices = ", ".join(sorted(PROVIDER_KEY_ENV))
-        raise RuntimeError(f"Unknown AI provider {provider!r}. Available providers: {choices}.")
-    key = os.getenv(env_name, "").strip()
+    key = secret_store.get(provider)
     if not key:
         raise RuntimeError(
-            f"{env_name} is missing for provider {normalized!r}. "
-            "Copy .env.example to .env and add the selected provider key."
+            f"No API key is configured for {provider}. Use '/key set {provider}' in Windows Agent."
         )
     return key
-
-
-def gemini_api_key() -> str:
-    """Backward-compatible key accessor for integrations importing this function."""
-
-    return provider_api_key("gemini")

@@ -1,4 +1,4 @@
-from agent_os.cli import app
+from agent_os.shell import main
 
 if __name__ == "__main__":
-    app()
+    main()

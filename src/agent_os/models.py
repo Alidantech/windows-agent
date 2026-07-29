@@ -5,31 +5,16 @@ from typing import Literal
 from pydantic import BaseModel, Field, model_validator
 
 ActionName = Literal[
-    "click",
-    "double_click",
-    "right_click",
-    "click_element",
-    "fill_element",
-    "move",
-    "type_text",
-    "press_key",
-    "hotkey",
-    "scroll",
-    "launch_app",
-    "open_url",
-    "activate_window",
-    "smoke_test_site",
-    "wait",
-    "ask_user",
-    "done",
-    "fail",
+    "click", "double_click", "right_click", "click_element", "fill_element",
+    "move", "type_text", "press_key", "hotkey", "scroll", "launch_app",
+    "open_url", "activate_window", "smoke_test_site", "wait", "ask_user",
+    "done", "fail",
 ]
 
 
 class AgentDecision(BaseModel):
     action: ActionName = Field(description="Exactly one supported action.")
     reason: str = Field(min_length=1, max_length=500)
-
     x: int | None = Field(default=None, ge=0, le=1000)
     y: int | None = Field(default=None, ge=0, le=1000)
     element_id: str | None = None
@@ -72,23 +57,11 @@ class AgentDecision(BaseModel):
         return self
 
     def signature(self) -> str:
-        return "|".join(
-            [
-                self.action,
-                str(self.x),
-                str(self.y),
-                str(self.element_id),
-                str(self.text),
-                str(self.key),
-                ",".join(self.keys or []),
-                str(self.amount),
-                str(self.app),
-                str(self.url),
-                str(self.browser),
-                str(self.window),
-                str(self.max_links),
-            ]
-        )
+        return "|".join([
+            self.action, str(self.x), str(self.y), str(self.element_id), str(self.text),
+            str(self.key), ",".join(self.keys or []), str(self.amount), str(self.app),
+            str(self.url), str(self.browser), str(self.window), str(self.max_links),
+        ])
 
 
 class TaskVerification(BaseModel):
@@ -131,9 +104,7 @@ class TargetInfo(BaseModel):
     backend: Literal["desktop", "browser"] = "desktop"
     url: str | None = None
     identity: str | None = None
-    capture_source: Literal[
-        "screen", "print-window", "screen-fallback", "playwright"
-    ] = "screen"
+    capture_source: Literal["screen", "print-window", "screen-fallback", "playwright"] = "screen"
     lease_id: str | None = None
 
 
@@ -170,3 +141,5 @@ class ExecutionResult(BaseModel):
     ok: bool
     summary: str
     details: dict[str, object] = Field(default_factory=dict)
+    task_complete: bool = False
+    completion_evidence: str | None = None

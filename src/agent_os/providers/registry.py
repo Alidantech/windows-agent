@@ -1,73 +1,58 @@
 from __future__ import annotations
 
+import importlib.util
 from collections.abc import Callable
 
 from agent_os.cancellation import CancellationToken
 from agent_os.config import Settings
 from agent_os.prompts import PromptBuilder
 from agent_os.providers.base import PlannerProvider
+from agent_os.secrets import secret_store
 
-ProviderFactory = Callable[[Settings, PromptBuilder, CancellationToken | None], PlannerProvider]
+ProviderFactory = Callable[[Settings, PromptBuilder, str, CancellationToken | None], PlannerProvider]
 
 
-def _gemini_factory(
-    settings: Settings,
-    prompts: PromptBuilder,
-    cancellation: CancellationToken | None,
-) -> PlannerProvider:
+def _gemini(settings: Settings, prompts: PromptBuilder, model: str, cancellation: CancellationToken | None) -> PlannerProvider:
     from agent_os.providers.gemini import GeminiPlanner
+    return GeminiPlanner(settings, prompts, model, cancellation)
 
-    return GeminiPlanner(settings, prompts, cancellation)
 
-
-def _openai_factory(
-    settings: Settings,
-    prompts: PromptBuilder,
-    cancellation: CancellationToken | None,
-) -> PlannerProvider:
+def _openai(settings: Settings, prompts: PromptBuilder, model: str, cancellation: CancellationToken | None) -> PlannerProvider:
     from agent_os.providers.openai import OpenAIPlanner
+    return OpenAIPlanner(settings, prompts, model, cancellation)
 
-    return OpenAIPlanner(settings, prompts, cancellation)
 
-
-def _mistral_factory(
-    settings: Settings,
-    prompts: PromptBuilder,
-    cancellation: CancellationToken | None,
-) -> PlannerProvider:
+def _mistral(settings: Settings, prompts: PromptBuilder, model: str, cancellation: CancellationToken | None) -> PlannerProvider:
     from agent_os.providers.mistral import MistralPlanner
+    return MistralPlanner(settings, prompts, model, cancellation)
 
-    return MistralPlanner(settings, prompts, cancellation)
 
-
-_FACTORIES: dict[str, ProviderFactory] = {
-    "gemini": _gemini_factory,
-    "openai": _openai_factory,
-    "mistral": _mistral_factory,
-}
+_FACTORIES: dict[str, ProviderFactory] = {"gemini": _gemini, "openai": _openai, "mistral": _mistral}
+_SDK_MODULES = {"gemini": "google.genai", "openai": "openai", "mistral": "mistralai"}
 
 
 def available_providers() -> tuple[str, ...]:
     return tuple(sorted(_FACTORIES))
 
 
-def register_provider(name: str, factory: ProviderFactory, *, replace: bool = False) -> None:
+def provider_ready(name: str) -> tuple[bool, str]:
     normalized = name.strip().lower()
-    if not normalized:
-        raise ValueError("Provider name cannot be empty.")
-    if normalized in _FACTORIES and not replace:
-        raise ValueError(f"Provider {normalized!r} is already registered.")
-    _FACTORIES[normalized] = factory
+    if normalized not in _FACTORIES:
+        return False, "unknown provider"
+    if secret_store.get(normalized) is None:
+        return False, "API key missing"
+    try:
+        sdk_found = importlib.util.find_spec(_SDK_MODULES[normalized]) is not None
+    except (ImportError, ModuleNotFoundError):
+        sdk_found = False
+    if not sdk_found:
+        return False, f"SDK missing ({_SDK_MODULES[normalized]})"
+    return True, "ready"
 
 
-def create_planner(
-    settings: Settings,
-    prompts: PromptBuilder,
-    cancellation: CancellationToken | None = None,
-) -> PlannerProvider:
-    provider = settings.provider.strip().lower()
-    factory = _FACTORIES.get(provider)
+def create_provider(settings: Settings, prompts: PromptBuilder, provider: str, model: str, cancellation: CancellationToken | None = None) -> PlannerProvider:
+    normalized = provider.strip().lower()
+    factory = _FACTORIES.get(normalized)
     if factory is None:
-        choices = ", ".join(available_providers())
-        raise RuntimeError(f"Unknown AI provider {provider!r}. Available providers: {choices}.")
-    return factory(settings, prompts, cancellation)
+        raise RuntimeError(f"Unknown provider {provider!r}.")
+    return factory(settings, prompts, model, cancellation)

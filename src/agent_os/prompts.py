@@ -42,6 +42,7 @@ class PromptBuilder:
         controller_window: WindowInfo,
         controller_protected: bool,
         settings_summary: dict[str, object],
+        session_context: list[dict[str, object]] | None = None,
     ) -> str:
         context = {
             "task": task,
@@ -68,6 +69,7 @@ class PromptBuilder:
             "recent_history": history[-10:],
             "last_execution_result": last_result.model_dump() if last_result else None,
             "user_guidance": user_guidance[-5:],
+            "persistent_session_context": (session_context or [])[-12:],
         }
         return (
             "Select exactly one next action.\n\n"
