@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 
 from agent_os.cancellation import CancellationToken
 from agent_os.interaction_policy import question_is_sensitive
+from agent_os.local_values import LOCAL_VALUE_TOKEN, local_value_vault
 
 
 @dataclass(frozen=True)
@@ -80,14 +81,20 @@ class QuestionBroker:
                 break
         with self._lock:
             self._question = question
-            self._sensitive = question_is_sensitive(question) if sensitive is None else sensitive
+            self._sensitive = (
+                question_is_sensitive(question) if sensitive is None else sensitive
+            )
         while True:
             self.cancellation.raise_if_cancelled()
             try:
                 answer = self._answer.get(timeout=0.1)
                 with self._lock:
+                    was_sensitive = self._sensitive
                     self._question = None
                     self._sensitive = False
+                if was_sensitive:
+                    local_value_vault.set(answer)
+                    return LOCAL_VALUE_TOKEN
                 return answer
             except queue.Empty:
                 continue
@@ -107,6 +114,7 @@ class QuestionBroker:
             was_waiting = self._question is not None
             self._question = None
             self._sensitive = False
+        local_value_vault.clear()
         if not was_waiting:
             return
         try:
