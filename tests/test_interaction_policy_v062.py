@@ -69,6 +69,22 @@ def test_requires_explicit_terms_consent():
     assert "type 'i agree'" in intervention.question.lower()
 
 
+def test_requires_user_takeover_for_captcha():
+    decision = AgentDecision(
+        action="click_element",
+        element_id="B3",
+        reason="complete CAPTCHA",
+    )
+    intervention = InteractionPolicy().required_intervention(
+        decision,
+        observation(element("B3", "I'm not a robot reCAPTCHA", "checkbox")),
+        task="create an account",
+        guidance=[],
+    )
+    assert intervention is not None
+    assert "yourself" in intervention.question.lower()
+
+
 def test_sensitive_question_detection():
     assert question_is_sensitive("Enter the verification code sent to your email")
     assert question_is_sensitive("What password should I use?")
