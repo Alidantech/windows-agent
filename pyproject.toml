@@ -4,17 +4,19 @@ build-backend = "hatchling.build"
 
 [project]
 name = "windows-agent"
-version = "0.5.0"
-description = "Provider-ready Windows automation with monitor leases, isolated browser input, UI Automation, safe overlays, skills, and deterministic evidence."
+version = "0.6.0"
+description = "Persistent provider-pluggable Windows automation with monitor leases, isolated browser input, safe overlays, model fallback, and structured evidence."
 readme = "README.md"
 requires-python = ">=3.11,<3.14"
 license = {text = "MIT"}
 authors = [{name = "Alidantech"}]
 dependencies = [
   "google-genai>=2.7.0,<3.0.0",
+  "keyring>=25.6.0,<26.0.0",
   "mss>=10.0.0,<11.0.0",
   "Pillow==11.1.0",
   "playwright>=1.54.0,<2.0.0",
+  "prompt-toolkit>=3.0.52,<4.0.0",
   "pyautogui>=0.9.54,<0.10.0",
   "pyperclip>=1.9.0,<2.0.0",
   "pywinauto==0.6.8",
@@ -25,7 +27,6 @@ dependencies = [
   "python-dotenv==1.0.1",
   "PyYAML>=6.0.2,<7.0.0",
   "rich>=14.0.0,<15.0.0",
-  "typer>=0.16.0,<1.0.0",
 ]
 
 [project.optional-dependencies]
@@ -41,8 +42,7 @@ dev = [
 ]
 
 [project.scripts]
-windows-agent = "agent_os.windows_cli:app"
-agent-os = "agent_os.cli:app"
+windows-agent = "agent_os.shell:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/agent_os"]
