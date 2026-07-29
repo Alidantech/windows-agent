@@ -28,5 +28,7 @@ def test_sensitive_answer_returns_token_and_stays_local():
 
     assert output == [LOCAL_VALUE_TOKEN]
     assert local_value_vault.get() == "not-sent-to-model"
+    assert local_value_vault.matches_target("Confirm password") is True
+    assert local_value_vault.matches_target("Email address") is False
     broker.cancel()
     assert local_value_vault.get() is None
