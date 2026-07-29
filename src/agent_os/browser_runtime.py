@@ -23,18 +23,42 @@ class BrowserController(BaseBrowserController):
 
     def abort(self) -> None:
         self.cancellation.cancel("Browser operation cancelled.")
-        base_abort = getattr(super(), "abort", None)
-        if callable(base_abort):
-            base_abort()
-            return
-        self.close(force=True)
+        try:
+            base_abort = getattr(super(), "abort", None)
+            if callable(base_abort):
+                base_abort()
+                return
+            self.close(force=True)
+        except BaseException:
+            self._terminate_owned_processes()
+
+    def _terminate_owned_processes(self) -> None:
+        pids = set(getattr(self, "_owned_pids", set()) or set())
+        try:
+            import psutil
+            for pid in pids:
+                try:
+                    process = psutil.Process(int(pid))
+                    for child in process.children(recursive=True):
+                        child.kill()
+                    process.kill()
+                except Exception:
+                    pass
+        except Exception:
+            pass
 
     def close(self, force: bool = False) -> None:
         base_close = super().close
         try:
-            base_close(force=force)
-        except TypeError:
-            base_close()
+            try:
+                base_close(force=force)
+            except TypeError:
+                base_close()
+        except BaseException:
+            if force:
+                self._terminate_owned_processes()
+            else:
+                raise
 
     @staticmethod
     def _safe_name(index: int, url: str) -> str:
