@@ -142,6 +142,7 @@ class InteractionPolicy:
                 ):
                     return UserIntervention(
                         f"What {friendly_name} should I enter?",
+                        sensitive=True,
                         guidance_label=f"{friendly_name.title()} supplied by user",
                         mode="replace_text",
                     )
