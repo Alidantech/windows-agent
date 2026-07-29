@@ -1,0 +1,22 @@
+# Only aliases in this file may be launched by the agent by default.
+# Use a list for executables and arguments. Use `uri` for Windows URI handlers.
+notepad:
+  command: ["notepad.exe"]
+calculator:
+  command: ["calc.exe"]
+explorer:
+  command: ["explorer.exe"]
+settings:
+  uri: "ms-settings:"
+terminal:
+  command: ["wt.exe"]
+powershell:
+  command: ["powershell.exe"]
+command_prompt:
+  command: ["cmd.exe"]
+edge:
+  command: ["msedge.exe"]
+chrome:
+  command: ["chrome.exe"]
+paint:
+  command: ["mspaint.exe"]

@@ -1,0 +1,5 @@
+Open the Windows Start menu.
+Open Notepad and type: Hello from Agent OS.
+Open Calculator and calculate 125 * 8.
+Activate the browser window whose title contains GitHub.
+Open File Explorer and navigate to Downloads.
