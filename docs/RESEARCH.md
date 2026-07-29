@@ -4,9 +4,9 @@ Windows Agent v0.6 is based on application-native control and one persistent ter
 
 ## Persistent terminal
 
-`prompt_toolkit.PromptSession` supports a reusable prompt application, persistent `FileHistory`, formatted prompts, completions, auto-suggestion, a dynamic bottom toolbar and configurable interrupt behavior. `patch_stdout` allows worker output to be printed while preserving the editable prompt.
+`prompt_toolkit.PromptSession` supports a reusable prompt application, persistent `FileHistory`, formatted prompts, completions, auto-suggestion, a dynamic bottom toolbar, password filtering, and configurable interrupt behavior. `patch_stdout` allows worker output to be printed while preserving the editable prompt.
 
-Rich supplies terminal capability detection, structured tables/panels, semantic colors and temporary status spinners. The permanent action history remains normal terminal output, while only current planning/verification uses an animated status.
+Rich supplies terminal capability detection, structured tables/panels, semantic colors, Markdown responses, and temporary status spinners. The permanent action history remains normal terminal output, while only current planning/verification uses an animated status.
 
 Official sources:
 
@@ -14,6 +14,34 @@ Official sources:
 - https://python-prompt-toolkit.readthedocs.io/en/stable/pages/reference.html
 - https://rich.readthedocs.io/en/latest/console.html
 - https://rich.readthedocs.io/en/stable/reference/status.html
+
+## Task routing
+
+A persistent assistant receives two materially different request classes:
+
+1. conversation that should return text;
+2. actionable computer work that needs screenshots, tools, leases, and verification.
+
+Forcing both through one visual loop increases latency and creates invalid completion tests, as a greeting cannot be proven by an unrelated desktop screenshot. Windows Agent therefore uses deterministic routing for obvious greetings, ordinary questions, explicit computer actions, screen-dependent questions, and persistent-browser continuations.
+
+This follows the broader agent-design principle of routing requests to specialized execution paths while avoiding unnecessary coordinator-model calls. The route itself is logged in the terminal so users can see whether a message became a terminal response or a desktop task.
+
+Official sources:
+
+- https://docs.cloud.google.com/architecture/choose-design-pattern-agentic-ai-system
+- https://docs.cloud.google.com/architecture/agentic-ai-multimodal-graph-rag-resource-orchestration
+
+## User control at sensitive boundaries
+
+Computer-use agents can affect external systems, enter personal data, and submit forms. Windows Agent keeps missing identity data, credentials, verification codes, CAPTCHA, legal consent, subscriptions, and other material decisions under user control.
+
+The local interaction policy is deterministic rather than prompt-only. It can interrupt a proposed form action before execution, ask for the missing value, mask sensitive answers, suppress those answers from prompt history, and require explicit confirmation for consent controls.
+
+Official sources:
+
+- https://openai.com/index/computer-using-agent/
+- https://openai.com/index/introducing-operator/
+- https://openai.com/index/prompt-injections/
 
 ## Credential storage
 
@@ -40,7 +68,7 @@ Model names and availability can change, so `/models` queries each configured pr
 - OpenAI uses `GET /v1/models` through the official SDK.
 - Mistral uses the Model Management list endpoint.
 
-The default route list is only a starting preference. Auto mode transfers the exact same current prompt and screenshot to the next ready route after quota, rate-limit, timeout, DNS/connection, overload or transient server failures. The prompt already includes lease identity, capture token, action history, tool results, user guidance and bounded session context, so switching transport does not reset the task.
+The default route list is only a starting preference. Auto mode transfers the exact same current prompt and screenshot to the next ready route after quota, rate-limit, timeout, DNS/connection, overload, or transient server failures. The prompt already includes lease identity, capture token, action history, tool results, user guidance, and bounded session context, so switching transport does not reset the task.
 
 Current model references used when v0.6 was authored:
 
@@ -63,10 +91,22 @@ Official sources:
 
 The earlier black-monitor failure came from relying on transparency for a monitor-sized Tk window. v0.6 removes that failure mode: the overlay process creates four thin border windows and two small badges only. It never owns a monitor-sized surface. Keeping every Tk object in a dedicated process also avoids destroying Tcl handlers from the wrong thread.
 
-## Deterministic completion
+## Completion verification
 
-`smoke_test_site` inventories links through the DOM, visits each unique same-origin URL, records HTTP/final URL/title/browser failures, saves screenshots and writes a report. This structured result is stronger evidence than asking a vision model to see a JSON file inside a webpage, so successful tool evidence completes the run directly.
+Completion evidence must match the kind of task:
+
+- terminal conversation completes from the returned answer and does not use visual verification;
+- simple navigation completes from a fresh URL/title/page observation;
+- deterministic tools complete from their structured result;
+- forms are verified against the post-submit page rather than a pre-click screenshot;
+- verification checkpoints are treated as blockers requiring user input, not as complete accounts.
+
+The number of rejected completion claims is bounded. This prevents a model from repeatedly returning `done` until the global step limit is exhausted.
+
+## Deterministic smoke testing
+
+`smoke_test_site` inventories links through the DOM, visits each unique same-origin URL, records HTTP/final URL/title/browser failures, saves screenshots, and writes a report. This structured result is stronger evidence than asking a vision model to see a JSON file inside a webpage, so successful tool evidence completes the run directly.
 
 ## Remaining limits
 
-Windows still has one shared system pointer and foreground keyboard focus per interactive desktop. Independent browser input is provided by Playwright; desktop applications use UI Automation first. A truly independent physical cursor/keyboard for arbitrary native applications requires another Windows session, VM or machine.
+Windows still has one shared system pointer and foreground keyboard focus per interactive desktop. Independent browser input is provided by Playwright; desktop applications use UI Automation first. A truly independent physical cursor/keyboard for arbitrary native applications requires another Windows session, VM, or machine.
