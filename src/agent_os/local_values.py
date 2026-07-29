@@ -13,11 +13,10 @@ class LocalValueVault:
         self._value: str | None = None
 
     def set(self, value: str) -> None:
-        candidate = value.strip()
-        if not candidate:
+        if value == "":
             raise ValueError("A sensitive value cannot be empty.")
         with self._lock:
-            self._value = candidate
+            self._value = value
 
     def get(self) -> str | None:
         with self._lock:
