@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 
 from agent_os.models import AgentDecision, UIElement
 
@@ -10,11 +10,15 @@ if TYPE_CHECKING:
     from agent_os.capture import CapturedObservation
 
 
+InterventionMode = Literal["replace_text", "confirm_action", "manual"]
+
+
 @dataclass(frozen=True)
 class UserIntervention:
     question: str
     sensitive: bool = False
     guidance_label: str = "User answer"
+    mode: InterventionMode = "manual"
 
 
 class InteractionPolicy:
@@ -104,6 +108,7 @@ class InteractionPolicy:
                 "Complete the CAPTCHA or human-verification step yourself in the assigned "
                 "browser, then type 'done' here.",
                 guidance_label="CAPTCHA completed by user",
+                mode="manual",
             )
 
         if decision.action in {"fill_element", "type_text"} and decision.text is not None:
@@ -117,6 +122,7 @@ class InteractionPolicy:
                     "The answer will be masked.",
                     sensitive=True,
                     guidance_label="Password supplied by user",
+                    mode="replace_text",
                 )
             if self._OTP.search(label) and not self._value_was_supplied(
                 decision.text,
@@ -127,6 +133,7 @@ class InteractionPolicy:
                     "The answer will be masked.",
                     sensitive=True,
                     guidance_label="Verification code supplied by user",
+                    mode="replace_text",
                 )
             for pattern, friendly_name in self._PERSONAL_FIELDS:
                 if pattern.search(label) and not self._value_was_supplied(
@@ -136,6 +143,7 @@ class InteractionPolicy:
                     return UserIntervention(
                         f"What {friendly_name} should I enter?",
                         guidance_label=f"{friendly_name.title()} supplied by user",
+                        mode="replace_text",
                     )
 
         if decision.action == "click_element" and element is not None:
@@ -146,6 +154,7 @@ class InteractionPolicy:
                     "This control accepts terms, privacy, subscription, or other consent. "
                     "Type 'I agree' only after reviewing it, or type 'no' to stop.",
                     guidance_label="Consent decision supplied by user",
+                    mode="confirm_action",
                 )
         return None
 
