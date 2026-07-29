@@ -1,22 +1,14 @@
 ---
 name: core
-description: Core Windows interaction strategy.
-triggers: [windows, desktop, computer, screen, click, open]
+description: Stable Windows monitor and window control strategy.
+triggers: [windows, desktop, computer, screen, click, open, monitor]
 ---
-Prefer Windows semantic controls in this order:
+Treat the target as a lease, not as whatever currently has foreground focus. Pixels and actions must have the same lease identity. For `monitor:N`, first discover an intended app, then bind its exact HWND or isolated browser to that monitor. Never follow the user into another window.
 
-1. `launch_app` for known app aliases.
-2. `activate_window` for a visible existing app.
-3. `press_key` or `hotkey` for standard Windows navigation.
-4. `click_element` when UI Automation provides a matching labeled control.
-5. Normalized coordinate clicks only when no semantic method exists.
+Prefer semantic controls in this order:
+1. isolated browser actions for websites;
+2. UI Automation invoke/set-value for Windows controls;
+3. direct application tools and shortcuts;
+4. physical cursor/keyboard only when policy permits.
 
-After every action, inspect the new screenshot. Do not assume the interface changed.
-
-## Controller-window rule
-
-The terminal running Agent OS is a protected controller. When `active-window` resolves to that terminal, Agent OS temporarily observes the desktop so it can activate the real destination. Never type a user's application message into the controller console.
-
-## Website rule
-
-Use `open_url` for domain/URL tasks instead of searching the Start menu or guessing browser paths. A native app named like a website does not satisfy a request to visit the website.
+The terminal running Agent OS is protected. Never type or click into it unless the user's task explicitly targets that terminal.

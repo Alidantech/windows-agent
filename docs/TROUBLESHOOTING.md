@@ -1,100 +1,59 @@
 # Troubleshooting
 
-## The agent types into its own `Task:` prompt
+## Screenshot and controlled app differ
 
-This was fixed in version 0.2.0. The terminal running Agent OS is now a protected controller window. With `--target active-window`, the agent observes the desktop whenever the controller is foreground, then activates the intended destination before typing.
-
-For maximum determinism, name the destination explicitly:
+Use v0.3 exact leases. Prefer:
 
 ```bash
-agent-os run "Send the message: reporting from Agent OS" --target "window:ChatGPT"
+agent-os screens
+agent-os run "TASK" --target hwnd:NUMBER
 ```
 
-If an old editable install is still active after replacing files, reinstall it:
+For websites, use `--control-mode browser`. Strict alignment should remain enabled. If a bound desktop app cannot be captured with `PrintWindow` while another app is foreground, Agent OS stops instead of acting.
+
+## Window title does not match
+
+`window:` matching is fuzzy and ignores browser brand words, but exact HWND is strongest:
 
 ```bash
-python -m pip install -e .
+agent-os screens
+agent-os lease-preview --target hwnd:NUMBER
 ```
 
-## I do not see the actions
+## Agent interrupts my mouse or keyboard
 
-The console prints a `Seeing:` line for each model observation. The matching clean screenshot is saved under `runs/<run-id>/screens/step-NNN-before.png`. Agent OS does not run as a hidden service. It uses foreground keyboard/mouse input and visible window activation.
+Run with:
 
-Increase the delay to make each action easier to watch:
+```bash
+--control-mode browser --physical-input deny --conflict-policy cooperative
+```
+
+For desktop apps, UI Automation may still work with physical input denied. Unsupported controls require `--physical-input ask`.
+
+## Playwright browser is missing
+
+```bash
+python -m playwright install chromium
+```
+
+Then run `agent-os doctor`.
+
+## Isolated Chrome channel cannot launch
+
+Agent OS automatically falls back to Playwright Chromium. Install Chromium using the command above. You may also set:
 
 ```env
-AGENT_OS_STEP_DELAY_SECONDS=2.0
+AGENT_OS_BROWSER_CHANNEL=chromium
 ```
 
+## Gemini quota or DNS failure
 
-## The agent repeats the same action
+A `429 RESOURCE_EXHAUSTED` response is a model quota issue. A `getaddrinfo failed` response is DNS/network resolution. Neither indicates a desktop-control failure. Agent OS logs the failure and does not continue with an unparsed action.
 
-The run should emit `stuck_detected` after the repeat limit. Inspect:
+## Monitor overlay appears in screenshots
 
-```text
-runs/<run>/screens/*-before.png
-runs/<run>/screens/*-action.png
-runs/<run>/events.jsonl
-```
-
-Use `agent-os capture` to verify the chosen target. Switch from `active-window` to `active-monitor` when a popup or taskbar is outside the active window.
-
-## It clicks the wrong place
-
-This project uses normalized 0..1000 target coordinates, so image resizing does not require separate coordinate scaling. Wrong clicks usually mean the model misidentified the control or the target changed after capture. Prefer `click_element` by enabling UIA and targeting one window.
-
-## Start menu opens and closes
-
-Use the included start-menu skill. The first action should be:
-
-```json
-{"action":"press_key","key":"win"}
-```
-
-If the model clicks the taskbar instead, confirm `skills/start_menu.md` exists and the task contains “Start menu.”
-
-## API errors
-
-Run:
+Windows normally excludes the overlay using display affinity. If the OS does not support that behavior, disable it:
 
 ```bash
-agent-os doctor
+agent-os run "TASK" --no-overlay
 ```
-
-Confirm `.env` contains only the key value and model name. The SDK constructs the endpoint; do not concatenate an API key into a URL.
-
-## `ModuleNotFoundError`
-
-Activate this project's virtual environment before running commands:
-
-```bash
-source .venv/Scripts/activate
-```
-
-Then reinstall:
-
-```bash
-python -m pip install -e .
-```
-
-## ChatGPTX dependency conflict
-
-Do not install this project globally. Its isolated venv pins Pillow 11.1.0 and python-dotenv 1.0.1, matching the conflict shown by ChatGPTX.
-
-## Windows scale/DPI problems
-
-First inspect the actual capture:
-
-```bash
-agent-os capture --target active-monitor --output dpi-debug.png
-```
-
-Prefer UI Automation element clicking. Keep all monitors on stable scaling while testing. Restart the agent after changing Windows display scaling.
-
-## Elevated window cannot be controlled
-
-Windows can prevent a normal process from controlling an elevated process. Do not automatically run the agent as Administrator. Use a non-elevated target app or manually complete the administrative step.
-
-## UI Automation returns no elements
-
-Some apps draw custom pixels and expose little accessibility information. Use `active-monitor` and visual actions, or add a narrow app-specific skill. Do not increase `AGENT_OS_MAX_UI_ELEMENTS` excessively because large accessibility trees increase prompt size and latency.

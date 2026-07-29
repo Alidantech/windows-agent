@@ -1,10 +1,13 @@
 from __future__ import annotations
 
-import re
+import ctypes
 from dataclasses import dataclass
 from typing import Any
 
+from PIL import Image, ImageStat
+
 from agent_os.models import Rectangle, UIElement, WindowInfo
+from agent_os.targeting import best_window_match, window_match_score
 
 
 @dataclass
@@ -14,7 +17,7 @@ class UIASnapshot:
 
 
 class WindowManager:
-    """Windows-only helpers, imported lazily so non-Windows tests can run."""
+    BROWSER_PROCESSES = {"chrome.exe", "msedge.exe", "brave.exe", "firefox.exe"}
 
     @staticmethod
     def _desktop():
@@ -38,95 +41,232 @@ class WindowManager:
             height=max(1, int(rect.bottom - rect.top)),
         )
 
-    def list_windows(self, limit: int = 100) -> list[WindowInfo]:
+    @staticmethod
+    def _window_info(hwnd: int, active: int | None = None) -> WindowInfo:
         import psutil
+        import win32gui
+        import win32process
 
+        if not win32gui.IsWindow(hwnd):
+            raise RuntimeError(f"Window handle {hwnd} no longer exists.")
+        left, top, right, bottom = win32gui.GetWindowRect(hwnd)
+        _, pid = win32process.GetWindowThreadProcessId(hwnd)
+        try:
+            process_name = psutil.Process(pid).name()
+        except (psutil.Error, OSError):
+            process_name = None
+        return WindowInfo(
+            hwnd=int(hwnd),
+            title=(win32gui.GetWindowText(hwnd) or "").strip() or f"Window {hwnd}",
+            process_id=int(pid),
+            process_name=process_name,
+            rect=Rectangle(
+                left=int(left),
+                top=int(top),
+                width=max(1, int(right - left)),
+                height=max(1, int(bottom - top)),
+            ),
+            active=int(hwnd) == int(active or -1),
+        )
+
+    def list_windows(self, limit: int = 100) -> list[WindowInfo]:
         active = self.active_hwnd()
         results: list[WindowInfo] = []
+        seen: set[int] = set()
         for wrapper in self._desktop().windows(visible_only=True):
             try:
-                title = (wrapper.window_text() or "").strip()
-                if not title:
-                    continue
-                rect = self._rect_from_wrapper(wrapper)
-                if rect.width < 40 or rect.height < 40:
-                    continue
                 hwnd = int(wrapper.handle)
-                pid = int(wrapper.process_id())
-                try:
-                    process_name = psutil.Process(pid).name()
-                except (psutil.Error, OSError):
-                    process_name = None
-                results.append(
-                    WindowInfo(
-                        hwnd=hwnd,
-                        title=title,
-                        process_id=pid,
-                        process_name=process_name,
-                        rect=rect,
-                        active=hwnd == active,
-                    )
-                )
+                if hwnd in seen:
+                    continue
+                seen.add(hwnd)
+                info = self._window_info(hwnd, active)
+                if not info.title or info.rect.width < 40 or info.rect.height < 40:
+                    continue
+                results.append(info)
             except Exception:
                 continue
         results.sort(key=lambda item: (not item.active, item.title.lower()))
         return results[:limit]
 
-    def active_window(self) -> WindowInfo:
-        import psutil
-        import win32gui
-        import win32process
+    def window_by_hwnd(self, hwnd: int) -> WindowInfo:
+        return self._window_info(hwnd, self.active_hwnd())
 
+    def active_window(self) -> WindowInfo:
         hwnd = self.active_hwnd()
         if not hwnd:
             raise RuntimeError("Windows did not report a foreground window.")
+        return self.window_by_hwnd(hwnd)
 
-        try:
-            left, top, right, bottom = win32gui.GetWindowRect(hwnd)
-            width = max(1, int(right - left))
-            height = max(1, int(bottom - top))
-            title = (win32gui.GetWindowText(hwnd) or "").strip()
-            _, pid = win32process.GetWindowThreadProcessId(hwnd)
-            try:
-                process_name = psutil.Process(pid).name()
-            except (psutil.Error, OSError):
-                process_name = None
-            return WindowInfo(
-                hwnd=hwnd,
-                title=title or f"Foreground window {hwnd}",
-                process_id=int(pid),
-                process_name=process_name,
-                rect=Rectangle(left=int(left), top=int(top), width=width, height=height),
-                active=True,
-            )
-        except Exception:
-            for window in self.list_windows(limit=300):
-                if window.hwnd == hwnd:
-                    return window
-            raise RuntimeError("Could not resolve the active foreground window.") from None
+    def find_window(self, query: str) -> WindowInfo:
+        windows = self.list_windows(limit=300)
+        match = best_window_match(query, windows)
+        if match is not None:
+            return match
+        suggestions = sorted(
+            windows,
+            key=lambda item: window_match_score(query, item),
+            reverse=True,
+        )[:5]
+        nearest = ", ".join(repr(item.title) for item in suggestions) or "none"
+        raise RuntimeError(f"No visible window matched {query!r}. Closest titles: {nearest}")
 
-    def find_window(self, title_pattern: str) -> WindowInfo:
-        pattern = re.compile(title_pattern, re.IGNORECASE)
-        matches = [window for window in self.list_windows(limit=300) if pattern.search(window.title)]
+    def find_process_window(self, process: str) -> WindowInfo:
+        normalized = process.lower().removesuffix(".exe")
+        matches = [
+            item
+            for item in self.list_windows(limit=300)
+            if (item.process_name or "").lower().removesuffix(".exe") == normalized
+        ]
         if not matches:
-            raise RuntimeError(f"No visible window title matched: {title_pattern!r}")
-        return matches[0]
+            raise RuntimeError(f"No visible window belongs to process {process!r}.")
+        return sorted(matches, key=lambda item: item.active, reverse=True)[0]
 
     def activate_hwnd(self, hwnd: int) -> WindowInfo:
-        match = next((item for item in self.list_windows(limit=300) if item.hwnd == hwnd), None)
-        if match is None:
-            raise RuntimeError(f"No visible window exists for handle {hwnd}.")
-        wrapper = self._desktop().window(handle=hwnd)
+        import win32con
+        import win32gui
+
+        if win32gui.IsIconic(hwnd):
+            win32gui.ShowWindow(hwnd, win32con.SW_RESTORE)
         try:
-            wrapper.restore()
+            self._desktop().window(handle=hwnd).set_focus()
+        except Exception:
+            try:
+                win32gui.SetForegroundWindow(hwnd)
+            except Exception as exc:
+                raise RuntimeError(f"Could not activate window {hwnd}: {exc}") from exc
+        return self.window_by_hwnd(hwnd)
+
+    def activate(self, query: str) -> WindowInfo:
+        match = self.find_window(query)
+        return self.activate_hwnd(match.hwnd)
+
+    @staticmethod
+    def monitor_for_rect(rect: Rectangle, monitors: list[tuple[int, Rectangle]]) -> int | None:
+        center_x = rect.left + rect.width / 2
+        center_y = rect.top + rect.height / 2
+        for index, monitor in monitors:
+            if monitor.contains(center_x, center_y):
+                return index
+        if not monitors:
+            return None
+        return max(monitors, key=lambda item: rect.intersection_area(item[1]))[0]
+
+    def move_to_monitor(self, hwnd: int, monitor: Rectangle, maximize: bool = True) -> WindowInfo:
+        import win32con
+        import win32gui
+
+        current = self.window_by_hwnd(hwnd)
+        try:
+            if win32gui.IsIconic(hwnd) or win32gui.IsZoomed(hwnd):
+                win32gui.ShowWindow(hwnd, win32con.SW_RESTORE)
         except Exception:
             pass
-        wrapper.set_focus()
-        return match
+        width = min(max(720, current.rect.width), monitor.width)
+        height = min(max(520, current.rect.height), monitor.height)
+        left = monitor.left + max(0, (monitor.width - width) // 2)
+        top = monitor.top + max(0, (monitor.height - height) // 2)
+        if not win32gui.MoveWindow(hwnd, left, top, width, height, True):
+            raise RuntimeError(f"Could not move {current.title!r} to the assigned monitor.")
+        if maximize:
+            try:
+                win32gui.ShowWindow(hwnd, win32con.SW_MAXIMIZE)
+            except Exception:
+                pass
+        return self.window_by_hwnd(hwnd)
 
-    def activate(self, title_pattern: str) -> WindowInfo:
-        match = self.find_window(title_pattern)
-        return self.activate_hwnd(match.hwnd)
+    def capture_window_image(self, hwnd: int) -> Image.Image | None:
+        import win32gui
+        import win32ui
+
+        window = self.window_by_hwnd(hwnd)
+        width, height = window.rect.width, window.rect.height
+        hwnd_dc = 0
+        source_dc = None
+        memory_dc = None
+        bitmap = None
+        try:
+            hwnd_dc = win32gui.GetWindowDC(hwnd)
+            if not hwnd_dc:
+                return None
+            source_dc = win32ui.CreateDCFromHandle(hwnd_dc)
+            memory_dc = source_dc.CreateCompatibleDC()
+            bitmap = win32ui.CreateBitmap()
+            bitmap.CreateCompatibleBitmap(source_dc, width, height)
+            memory_dc.SelectObject(bitmap)
+            result = ctypes.windll.user32.PrintWindow(hwnd, memory_dc.GetSafeHdc(), 0x00000002)
+            if result != 1:
+                return None
+            raw = bitmap.GetBitmapBits(True)
+            image = Image.frombuffer("RGB", (width, height), raw, "raw", "BGRX", 0, 1).copy()
+            stats = ImageStat.Stat(image.resize((64, 64)))
+            if max(stats.var) < 1.0 and max(stats.mean) < 8.0:
+                return None
+            return image
+        except Exception:
+            return None
+        finally:
+            try:
+                if bitmap is not None:
+                    win32gui.DeleteObject(bitmap.GetHandle())
+            except Exception:
+                pass
+            try:
+                if memory_dc is not None:
+                    memory_dc.DeleteDC()
+            except Exception:
+                pass
+            try:
+                if source_dc is not None:
+                    source_dc.DeleteDC()
+            except Exception:
+                pass
+            try:
+                if hwnd_dc:
+                    win32gui.ReleaseDC(hwnd, hwnd_dc)
+            except Exception:
+                pass
+
+    @staticmethod
+    def semantic_invoke(wrapper: Any) -> str | None:
+        for method_name in ("invoke", "select", "toggle", "expand", "click"):
+            method = getattr(wrapper, method_name, None)
+            if callable(method):
+                try:
+                    method()
+                    return method_name
+                except Exception:
+                    pass
+        try:
+            wrapper.iface_invoke.Invoke()
+            return "InvokePattern"
+        except Exception:
+            return None
+
+    @staticmethod
+    def semantic_set_text(wrapper: Any, text: str) -> str | None:
+        for method_name in ("set_edit_text", "set_text"):
+            method = getattr(wrapper, method_name, None)
+            if callable(method):
+                try:
+                    method(text)
+                    return method_name
+                except Exception:
+                    pass
+        try:
+            wrapper.iface_value.SetValue(text)
+            return "ValuePattern"
+        except Exception:
+            return None
+
+    @staticmethod
+    def focused_wrapper(snapshot: UIASnapshot) -> tuple[str, Any] | None:
+        for element_id, wrapper in snapshot.wrappers.items():
+            try:
+                if wrapper.has_keyboard_focus():
+                    return element_id, wrapper
+            except Exception:
+                continue
+        return None
 
     def snapshot_elements(
         self,
@@ -136,7 +276,6 @@ class WindowManager:
     ) -> UIASnapshot:
         if max_elements <= 0:
             return UIASnapshot(elements=[], wrappers={})
-
         try:
             root = self._desktop().window(handle=hwnd)
             candidates = [root, *root.descendants()]
@@ -154,40 +293,32 @@ class WindowManager:
                     continue
                 if rect.bottom <= target_rect.top or rect.top >= target_rect.bottom:
                     continue
-
                 info = wrapper.element_info
                 name = (getattr(info, "name", None) or wrapper.window_text() or "").strip()
                 control_type = str(getattr(info, "control_type", "Unknown"))
                 automation_id = getattr(info, "automation_id", None) or None
-                visible = bool(wrapper.is_visible())
-                enabled = bool(wrapper.is_enabled())
-                if not visible:
+                if not wrapper.is_visible() or (not name and not automation_id):
                     continue
-                if not name and not automation_id:
-                    continue
-
-                center_screen_x = rect.left + rect.width / 2
-                center_screen_y = rect.top + rect.height / 2
-                center_x = round((center_screen_x - target_rect.left) * 1000 / target_rect.width)
-                center_y = round((center_screen_y - target_rect.top) * 1000 / target_rect.height)
-                center_x = max(0, min(1000, center_x))
-                center_y = max(0, min(1000, center_y))
-
+                cx = rect.left + rect.width / 2
+                cy = rect.top + rect.height / 2
+                center_x = round((cx - target_rect.left) * 1000 / target_rect.width)
+                center_y = round((cy - target_rect.top) * 1000 / target_rect.height)
                 element_id = f"E{len(elements) + 1:03d}"
-                element = UIElement(
-                    element_id=element_id,
-                    name=name[:200],
-                    control_type=control_type[:80],
-                    automation_id=str(automation_id)[:150] if automation_id else None,
-                    enabled=enabled,
-                    visible=visible,
-                    rect=rect,
-                    center_x=center_x,
-                    center_y=center_y,
+                elements.append(
+                    UIElement(
+                        element_id=element_id,
+                        name=name[:200],
+                        control_type=control_type[:80],
+                        automation_id=str(automation_id)[:150] if automation_id else None,
+                        enabled=bool(wrapper.is_enabled()),
+                        visible=True,
+                        rect=rect,
+                        center_x=max(0, min(1000, center_x)),
+                        center_y=max(0, min(1000, center_y)),
+                        source="uia",
+                    )
                 )
-                elements.append(element)
                 wrappers[element_id] = wrapper
             except Exception:
                 continue
-
         return UIASnapshot(elements=elements, wrappers=wrappers)

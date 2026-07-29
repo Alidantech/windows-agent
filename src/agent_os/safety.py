@@ -46,13 +46,13 @@ class SafetyPolicy:
         if decision.action == "press_key" and (decision.key or "").lower() == "delete":
             return SafetyAssessment(True, self.confirm_risky, "Delete key may remove selected content.")
 
-        if decision.action == "type_text" and decision.text:
+        if decision.action in {"type_text", "fill_element"} and decision.text:
             lowered = decision.text.lower()
             sensitive_markers = ("password=", "api_key=", "secret=", "bearer ")
             if any(marker in lowered for marker in sensitive_markers):
                 return SafetyAssessment(False, False, "Refusing to type text that resembles a secret.")
 
-        if decision.action == "open_url" and decision.url:
+        if decision.action in {"open_url", "smoke_test_site"} and decision.url:
             normalized = decision.url if "://" in decision.url else f"https://{decision.url}"
             parsed = urlparse(normalized)
             if parsed.scheme not in {"http", "https"} or not parsed.netloc:

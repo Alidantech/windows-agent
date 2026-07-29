@@ -8,3 +8,9 @@ runs/
 dist/
 build/
 *.egg-info/
+
+# Windows Agent runtime files
+.agent-os/
+runs/
+.venv/
+.env

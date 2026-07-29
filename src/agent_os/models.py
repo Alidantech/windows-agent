@@ -9,6 +9,7 @@ ActionName = Literal[
     "double_click",
     "right_click",
     "click_element",
+    "fill_element",
     "move",
     "type_text",
     "press_key",
@@ -17,6 +18,7 @@ ActionName = Literal[
     "launch_app",
     "open_url",
     "activate_window",
+    "smoke_test_site",
     "wait",
     "ask_user",
     "done",
@@ -25,16 +27,12 @@ ActionName = Literal[
 
 
 class AgentDecision(BaseModel):
-    """One atomic action selected by the model."""
-
     action: ActionName = Field(description="Exactly one supported action.")
     reason: str = Field(min_length=1, max_length=500)
 
-    # Coordinates are normalized to 0..1000 relative to the captured target.
     x: int | None = Field(default=None, ge=0, le=1000)
     y: int | None = Field(default=None, ge=0, le=1000)
     element_id: str | None = None
-
     text: str | None = Field(default=None, max_length=4000)
     key: str | None = Field(default=None, max_length=50)
     keys: list[str] | None = Field(default=None, max_length=8)
@@ -45,16 +43,18 @@ class AgentDecision(BaseModel):
     window: str | None = Field(default=None, max_length=200)
     seconds: float | None = Field(default=None, ge=0.2, le=10.0)
     message: str | None = Field(default=None, max_length=1000)
+    max_links: int | None = Field(default=None, ge=1, le=250)
 
     @model_validator(mode="after")
     def validate_action_fields(self) -> "AgentDecision":
-        coordinate_actions = {"click", "double_click", "right_click", "move"}
-        if self.action in coordinate_actions and (self.x is None or self.y is None):
+        if self.action in {"click", "double_click", "right_click", "move"} and (
+            self.x is None or self.y is None
+        ):
             raise ValueError(f"{self.action} requires x and y")
-        if self.action == "click_element" and not self.element_id:
-            raise ValueError("click_element requires element_id")
-        if self.action == "type_text" and self.text is None:
-            raise ValueError("type_text requires text")
+        if self.action in {"click_element", "fill_element"} and not self.element_id:
+            raise ValueError(f"{self.action} requires element_id")
+        if self.action in {"fill_element", "type_text"} and self.text is None:
+            raise ValueError(f"{self.action} requires text")
         if self.action == "press_key" and not self.key:
             raise ValueError("press_key requires key")
         if self.action == "hotkey" and not self.keys:
@@ -72,7 +72,6 @@ class AgentDecision(BaseModel):
         return self
 
     def signature(self) -> str:
-        """Stable signature used for repeated-action detection."""
         return "|".join(
             [
                 self.action,
@@ -87,6 +86,7 @@ class AgentDecision(BaseModel):
                 str(self.url),
                 str(self.browser),
                 str(self.window),
+                str(self.max_links),
             ]
         )
 
@@ -112,14 +112,29 @@ class Rectangle(BaseModel):
     def bottom(self) -> int:
         return self.top + self.height
 
+    def contains(self, x: int | float, y: int | float) -> bool:
+        return self.left <= x < self.right and self.top <= y < self.bottom
+
+    def intersection_area(self, other: "Rectangle") -> int:
+        width = max(0, min(self.right, other.right) - max(self.left, other.left))
+        height = max(0, min(self.bottom, other.bottom) - max(self.top, other.top))
+        return width * height
+
 
 class TargetInfo(BaseModel):
     spec: str
-    kind: Literal["desktop", "monitor", "window"]
+    kind: Literal["desktop", "monitor", "window", "browser"]
     label: str
     rect: Rectangle
     monitor_index: int | None = None
     hwnd: int | None = None
+    backend: Literal["desktop", "browser"] = "desktop"
+    url: str | None = None
+    identity: str | None = None
+    capture_source: Literal[
+        "screen", "print-window", "screen-fallback", "playwright"
+    ] = "screen"
+    lease_id: str | None = None
 
 
 class MonitorInfo(BaseModel):
@@ -135,6 +150,7 @@ class WindowInfo(BaseModel):
     process_name: str | None = None
     rect: Rectangle
     active: bool = False
+    monitor_index: int | None = None
 
 
 class UIElement(BaseModel):
@@ -147,6 +163,7 @@ class UIElement(BaseModel):
     rect: Rectangle
     center_x: int = Field(ge=0, le=1000)
     center_y: int = Field(ge=0, le=1000)
+    source: Literal["uia", "browser"] = "uia"
 
 
 class ExecutionResult(BaseModel):

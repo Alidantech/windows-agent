@@ -1,43 +1,42 @@
 # Architecture
 
-## Control loop
+## Control lease
 
-1. Resolve a capture target: active window, active monitor, named window, monitor, or desktop.
-2. Capture it using MSS and save the original PNG.
-3. Collect visible windows and, for a window target, a bounded UI Automation element snapshot.
-4. Select relevant Markdown skills for the task.
-5. Send task context, recent tool history, UI metadata, and the resized screenshot to Gemini.
-6. Parse the response into the Pydantic `AgentDecision` schema.
-7. Apply local safety policy and repeated-action detection.
-8. Execute one action with PyAutoGUI, UI Automation, AppLauncher, or WindowManager.
-9. Save an annotated action image and structured event.
-10. Repeat with a new screenshot.
-11. When the planner says `done`, use a separate typed visual verification request before ending.
+`LeaseManager` converts a requested target into a mutable `TargetLease` containing:
 
-## Main modules
+- lease ID and generation;
+- assigned monitor geometry;
+- backend (`desktop` or `browser`);
+- exact HWND/title/process for desktop control;
+- current state and binding reason.
 
-- `config.py`: environment-based settings and API key loading.
-- `models.py`: typed action, screen, UI, result, and verification models.
-- `capture.py`: MSS monitor/window capture, image resizing, and action overlays.
-- `windows.py`: top-level window discovery, activation, and UI Automation snapshots.
-- `provider.py`: Google Gen AI SDK calls with image bytes and typed JSON output.
-- `prompts.py`: external prompt and skill assembly.
-- `skills.py`: Markdown skill parsing and task matching.
-- `tools.py`: one-action execution.
-- `safety.py`: blocked and confirmation-required local actions.
-- `repeat.py`: repeated identical action detector.
-- `runlog.py`: redacted JSONL, text logs, manifests, and run folders.
-- `agent.py`: orchestration, asking the user, recovery, and completion verification.
-- `cli.py`: doctor, screen discovery, capture, run, chat, apps, and log commands.
+A monitor-only lease begins in discovery state. After `launch_app`, system `open_url`, or `activate_window`, destination windows are scored using new-window status, foreground state, browser process, monitor overlap, domain/title tokens, and app terms. The selected HWND is optionally moved to the assigned monitor and bound.
 
-## Coordinate model
+An isolated `open_url` directly changes the lease backend to browser.
 
-The model returns x/y values from 0 to 1000 relative to the selected capture rectangle. The executor maps those normalized coordinates directly to the original target rectangle. This remains correct when the screenshot sent to Gemini is resized and also works with monitors positioned at negative virtual-desktop coordinates.
+## Capture alignment
 
-## Why typed planner actions instead of free-form JSON
+Desktop bound-window capture attempts Win32 `PrintWindow`. If it fails:
 
-The Gemini SDK is configured with a Pydantic response schema. Invalid action names and missing fields fail validation before any desktop action can run. This avoids treating an HTTP error or an explanatory paragraph as executable JSON.
+- strict mode permits a screen fallback only when the bound HWND owns foreground;
+- otherwise the run stops before Gemini receives unrelated pixels.
 
-## Why UI Automation plus pixels
+Every observation includes a target identity and capture token derived from target metadata plus PNG bytes. The prompt receives the token, lease, monitor, HWND/browser identity, and source.
 
-Pixels provide universal visual context. UI Automation can provide labeled controls, control types, automation IDs, bounds, enabled state, and direct element clicking. The agent prefers those semantic elements but falls back to visual coordinates when an app exposes no useful accessibility tree.
+## Browser backend
+
+`BrowserController` launches a persistent visible Playwright context on the monitor geometry. All clicks, text, keyboard, and scrolling occur through Playwright page APIs. DOM controls are converted to the same `UIElement` representation used by desktop UI Automation.
+
+`smoke_test_site` inventories unique same-origin anchors and tests each in a temporary page. It captures status, final URL, title, page errors, request failures, elapsed time, and a screenshot.
+
+## Desktop backend
+
+The desktop backend uses UI Automation semantic patterns first. Shared physical PyAutoGUI input is a fallback gated by conflict and physical-input policies. A pre-action guard verifies that the observation HWND equals the leased HWND and overlaps the assigned monitor.
+
+## Overlay
+
+A transparent, click-through, non-activating Tk/Win32 overlay marks the assigned monitor and shows a virtual agent cursor. It requests display-affinity exclusion from capture where Windows supports it.
+
+## Planner and verifier
+
+Gemini receives one screenshot and structured context per step. The planner returns a typed `AgentDecision`. A separate typed verifier checks candidate completion. Deterministic tool evidence is included in history and observation state.

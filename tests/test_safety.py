@@ -25,3 +25,9 @@ def test_allows_https_url() -> None:
     decision = AgentDecision(action="open_url", url="https://chatgpt.com", reason="open site")
     assessment = SafetyPolicy(confirm_risky=True).assess(decision)
     assert assessment.allowed
+
+
+def test_blocks_non_http_smoke_target() -> None:
+    decision = AgentDecision(action="smoke_test_site", url="file:///C:/", reason="test")
+    assessment = SafetyPolicy(confirm_risky=True).assess(decision)
+    assert not assessment.allowed

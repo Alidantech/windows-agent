@@ -4,8 +4,8 @@ build-backend = "hatchling.build"
 
 [project]
 name = "gemini-windows-agent"
-version = "0.2.0"
-description = "A supervised Gemini-powered Windows desktop automation agent with saved screenshots, multi-monitor targeting, UI Automation metadata, skills, and structured logs."
+version = "0.3.0"
+description = "A monitor-leased Gemini Windows automation agent with aligned screenshots, isolated browser input, UI Automation, overlays, skills, and structured evidence."
 readme = "README.md"
 requires-python = ">=3.11,<3.14"
 license = {text = "MIT"}
@@ -14,6 +14,7 @@ dependencies = [
   "google-genai>=2.7.0,<3.0.0",
   "mss>=10.0.0,<11.0.0",
   "Pillow==11.1.0",
+  "playwright>=1.54.0,<2.0.0",
   "pyautogui>=0.9.54,<0.10.0",
   "pyperclip>=1.9.0,<2.0.0",
   "pywinauto==0.6.8",
@@ -41,6 +42,7 @@ packages = ["src/agent_os"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+pythonpath = ["src"]
 addopts = "-q"
 
 [tool.ruff]

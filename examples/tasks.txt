@@ -1,5 +1,5 @@
-Open the Windows Start menu.
-Open Notepad and type: Hello from Agent OS.
-Open Calculator and calculate 125 * 8.
-Activate the browser window whose title contains GitHub.
-Open File Explorer and navigate to Downloads.
+Open chatgpt.com in the isolated browser.
+Open defytickets.com and smoke test every unique same-origin link.
+Open Calculator on the assigned monitor and calculate 125 times 8.
+Inspect the current browser page and list visible form controls.
+Open Notepad on the assigned monitor and type Hello from Agent OS.

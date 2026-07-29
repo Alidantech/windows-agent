@@ -1,10 +1,8 @@
 from __future__ import annotations
 
 import time
-from typing import TypeVar
+from typing import Any, TypeVar
 
-from google import genai
-from google.genai import types
 from pydantic import BaseModel
 
 from agent_os.config import Settings, gemini_api_key
@@ -18,6 +16,15 @@ class GeminiPlanner:
     def __init__(self, settings: Settings, prompts: PromptBuilder) -> None:
         self.settings = settings
         self.prompts = prompts
+        try:
+            from google import genai
+            from google.genai import types
+        except ImportError as exc:
+            raise RuntimeError(
+                "google-genai is not installed. Activate the project virtual environment and run "
+                "'python -m pip install -e .'."
+            ) from exc
+        self._types: Any = types
         self.client = genai.Client(api_key=gemini_api_key())
 
     def _request(
@@ -34,9 +41,9 @@ class GeminiPlanner:
                     model=self.settings.model,
                     contents=[
                         prompt,
-                        types.Part.from_bytes(data=image_bytes, mime_type="image/png"),
+                        self._types.Part.from_bytes(data=image_bytes, mime_type="image/png"),
                     ],
-                    config=types.GenerateContentConfig(
+                    config=self._types.GenerateContentConfig(
                         system_instruction=system_instruction,
                         temperature=0.1,
                         response_mime_type="application/json",

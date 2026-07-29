@@ -8,9 +8,12 @@ from rich.console import Console
 from rich.prompt import Prompt
 
 from agent_os.apps import AppLauncher
+from agent_os.browser import BrowserController
 from agent_os.capture import CapturedObservation, ScreenCapture
 from agent_os.config import Settings
-from agent_os.models import AgentDecision, ExecutionResult, WindowInfo
+from agent_os.lease import LeaseManager, TargetLease
+from agent_os.models import AgentDecision, ExecutionResult
+from agent_os.overlay import create_overlay
 from agent_os.prompts import PromptBuilder
 from agent_os.provider import GeminiPlanner
 from agent_os.repeat import RepeatDetector
@@ -40,22 +43,30 @@ class DesktopAgent:
         auto_confirm: bool = False,
     ) -> None:
         self.settings = settings
-        self.window_manager = WindowManager()
-        self.app_launcher = AppLauncher(
+        self.windows = WindowManager()
+        self.launcher = AppLauncher(
             settings.app_aliases_file,
             allow_unlisted=settings.allow_unlisted_apps,
         )
-        self.capture = ScreenCapture(settings, self.window_manager)
-        self.prompts = PromptBuilder(settings.prompts_dir, self.app_launcher)
+        self.capture = ScreenCapture(settings, self.windows)
+        self.prompts = PromptBuilder(settings.prompts_dir, self.launcher)
         self.skills = SkillLoader(settings.skills_dir)
         self.planner = GeminiPlanner(settings, self.prompts)
+        self.browser = BrowserController(settings)
+        self.overlay = create_overlay(settings.overlay_enabled)
         self.executor = ToolExecutor(
             settings,
-            self.app_launcher,
-            self.window_manager,
+            self.launcher,
+            self.windows,
+            self.browser,
+            self.overlay,
             dry_run=dry_run,
             auto_confirm=auto_confirm,
         )
+
+    def close(self) -> None:
+        self.overlay.stop()
+        self.browser.close()
 
     @staticmethod
     def _history_item(
@@ -76,7 +87,7 @@ class DesktopAgent:
     ) -> tuple[int | None, int | None]:
         if decision.x is not None and decision.y is not None:
             return decision.x, decision.y
-        if decision.action == "click_element" and decision.element_id:
+        if decision.element_id:
             element = next(
                 (item for item in observation.uia.elements if item.element_id == decision.element_id),
                 None,
@@ -85,31 +96,35 @@ class DesktopAgent:
                 return element.center_x, element.center_y
         return None, None
 
-    def _effective_target(
+    def _capture(
         self,
-        requested_target: str,
-        controller: WindowInfo,
-        allow_controller: bool,
-    ) -> tuple[str, bool]:
-        lowered = requested_target.strip().lower()
-        if lowered not in {"active", "active-window"} or allow_controller:
-            return requested_target, False
-        try:
-            if self.window_manager.active_hwnd() == controller.hwnd:
-                return "desktop", True
-        except Exception:
-            pass
-        return requested_target, False
+        lease: TargetLease,
+        screenshot_path: Any,
+    ) -> CapturedObservation:
+        if lease.backend == "browser":
+            if not self.browser.active:
+                raise RuntimeError("The control lease is browser-backed, but the browser session is closed.")
+            return self.capture.capture_browser(
+                self.browser,
+                lease.monitor_index,
+                screenshot_path=screenshot_path,
+                lease_id=lease.lease_id,
+            )
+        return self.capture.capture(
+            lease.capture_spec,
+            screenshot_path=screenshot_path,
+            lease_id=lease.lease_id,
+        )
 
-    def _restore_after_prompt(self, hwnd: int | None, controller_hwnd: int) -> None:
-        if hwnd is None or hwnd == controller_hwnd:
-            return
-        try:
-            self.window_manager.activate_hwnd(hwnd)
-            time.sleep(0.3)
-        except Exception:
-            # The window may have closed while the user was answering.
-            pass
+    def _settings_summary(self) -> dict[str, object]:
+        return {
+            "control_mode": self.settings.control_mode,
+            "browser_backend": self.settings.browser_backend,
+            "conflict_policy": self.settings.conflict_policy,
+            "physical_input_policy": self.settings.physical_input_policy,
+            "strict_capture_alignment": self.settings.strict_capture_alignment,
+            "restore_user_cursor": self.settings.restore_user_cursor,
+        }
 
     def run(
         self,
@@ -128,89 +143,142 @@ class DesktopAgent:
         stuck_count = 0
         rejected_done_count = 0
 
-        controller = self.window_manager.active_window()
+        controller = self.windows.active_window()
         allow_controller = task_allows_controller(task, target_spec, controller.title)
         self.executor.configure_controller(controller.hwnd, allow_controller)
+        monitors = self.capture.list_monitors()
+        lease_manager = LeaseManager(
+            self.windows,
+            monitors,
+            controller,
+            target_spec,
+            self.settings.move_bound_window_to_monitor,
+        )
+        lease = lease_manager.lease
+        selected_skill_names = {item.name for item in selected_skills}
+        browser_continuation_terms = (
+            "page", "website", "site", "browser", "link", "url", "tab", "form",
+            "chatgpt", "http", ".com", "scroll", "current page",
+        )
+        continue_browser = (
+            self.browser.active
+            and (
+                self.settings.control_mode == "browser"
+                or "browser" in selected_skill_names
+                or "smoke-testing" in selected_skill_names
+                or any(term in task.lower() for term in browser_continuation_terms)
+            )
+        )
+        if continue_browser:
+            if lease.monitor_rect is None and self.browser.monitor_rect is not None:
+                lease.monitor_rect = self.browser.monitor_rect
+                pairs = [(item.index, item.rect) for item in monitors]
+                lease.monitor_index = self.windows.monitor_for_rect(
+                    self.browser.monitor_rect, pairs
+                )
+            lease.bind_browser(self.browser.diagnostics().get("title") or "Isolated browser")
+        logged_lease_generation = lease.generation
+        overlay_started = False
+        if lease.monitor_rect:
+            self.overlay.start(
+                lease.monitor_rect,
+                f"MONITOR {lease.monitor_index} · LEASE {lease.lease_id}",
+            )
+            self.overlay.status("ASSIGNED", "ready")
+            overlay_started = True
 
         logger.event(
             "run_started",
             summary=f"Task started: {task}",
-            selected_skills=[skill.name for skill in selected_skills],
-            controller={
-                "hwnd": controller.hwnd,
-                "title": controller.title,
-                "process_name": controller.process_name,
-                "protected": not allow_controller,
-            },
+            controller=controller.model_dump(),
+            controller_protected=not allow_controller,
+            monitors=[item.model_dump() for item in monitors],
+            control_lease=lease.as_dict(),
+            settings=self._settings_summary(),
+            selected_skills=[item.name for item in selected_skills],
         )
+        logger.update_manifest(
+            control_lease=lease.as_dict(),
+            settings=self._settings_summary(),
+        )
+
         console.print(f"[bold cyan]Run:[/bold cyan] {logger.run_id}")
         console.print(f"[bold]Task:[/bold] {task}")
         console.print(f"[bold]Requested target:[/bold] {target_spec}")
+        console.print(f"[bold]Detected monitors:[/bold] {len(monitors)}")
+        if lease.monitor_rect:
+            rect = lease.monitor_rect
+            console.print(
+                f"[bold]Assigned monitor:[/bold] {lease.monitor_index} "
+                f"({rect.width}x{rect.height} at {rect.left},{rect.top})"
+            )
+        console.print(f"[bold]Control lease:[/bold] {lease.label()}")
+        console.print(
+            f"[bold]Control mode:[/bold] {self.settings.control_mode}; "
+            f"browser={self.settings.browser_backend}; conflicts={self.settings.conflict_policy}; "
+            f"physical input={self.settings.physical_input_policy}"
+        )
         if not allow_controller:
             console.print(
                 f"[bold]Protected controller:[/bold] {controller.title} "
-                "(the agent will not type or click into its own console)"
+                "(the lease cannot bind to this console)"
             )
         console.print("Emergency stop: move the pointer to the top-left corner or press Ctrl+C.\n")
 
         try:
             for step in range(1, limit + 1):
-                effective_target, discovery_mode = self._effective_target(
-                    target_spec,
-                    controller,
-                    allow_controller,
-                )
+                if lease.backend == "desktop" and lease.bound_hwnd:
+                    lease_manager.refresh()
                 screenshot_path = (
                     logger.screenshot_path(step, "before")
                     if self.settings.save_screenshots
                     else None
                 )
-                observation = self.capture.capture(effective_target, screenshot_path=screenshot_path)
-                if discovery_mode:
-                    console.print(
-                        "[yellow]Controller console is foreground; observing the desktop to select "
-                        "the real destination window.[/yellow]"
-                    )
+                observation = self._capture(lease, screenshot_path)
+                if lease.backend == "desktop" and lease.bound_hwnd:
+                    if observation.target.hwnd != lease.bound_hwnd:
+                        raise RuntimeError(
+                            "Internal alignment failure: captured HWND differs from the control lease."
+                        )
+                if lease.backend == "browser" and observation.target.backend != "browser":
+                    raise RuntimeError("Internal alignment failure: browser lease produced desktop pixels.")
+
                 console.print(
-                    f"[dim]Seeing: {observation.target.label} "
+                    f"[dim]Seeing controlled target: {observation.target.label} · "
+                    f"backend={observation.target.backend} · "
+                    f"source={observation.target.capture_source} · "
+                    f"monitor={observation.target.monitor_index or '-'} · "
+                    f"identity={observation.target.identity} "
                     f"({observation.original_image.width}x{observation.original_image.height})"
                     + (f" | {screenshot_path}" if screenshot_path else "")
                     + "[/dim]"
                 )
+                self.overlay.status(f"STEP {step} · OBSERVING", "working")
                 logger.event(
                     "observation",
                     summary=f"Captured step {step}: {observation.target.label}",
                     step=step,
-                    requested_target=target_spec,
-                    effective_target=effective_target,
-                    discovery_mode=discovery_mode,
+                    capture_token=observation.capture_token,
+                    control_lease=lease.as_dict(),
                     target=observation.target.model_dump(),
+                    observation_state=observation.state,
                     screenshot=str(screenshot_path) if screenshot_path else None,
-                    monitors=[item.model_dump() for item in observation.monitors],
-                    visible_windows=[
-                        {
-                            "title": item.title,
-                            "process_name": item.process_name,
-                            "active": item.active,
-                            "rect": item.rect.model_dump(),
-                        }
-                        for item in observation.windows
-                    ],
+                    visible_windows=[item.model_dump() for item in observation.windows],
                     ui_elements=[item.model_dump() for item in observation.uia.elements],
-                    ui_element_count=len(observation.uia.elements),
                 )
 
                 prompt = self.prompts.build_step_prompt(
-                    task=task,
-                    step=step,
-                    observation=observation,
-                    skills=selected_skills,
-                    history=history,
-                    last_result=last_result,
-                    user_guidance=guidance,
-                    requested_target=target_spec,
-                    controller_window=controller,
-                    controller_protected=not allow_controller,
+                    task,
+                    step,
+                    observation,
+                    lease,
+                    selected_skills,
+                    history,
+                    last_result,
+                    guidance,
+                    controller,
+                    not allow_controller,
+                    self._settings_summary(),
                 )
                 decision, raw = self.planner.plan(prompt, observation.api_image_bytes)
                 logger.event(
@@ -219,6 +287,8 @@ class DesktopAgent:
                     step=step,
                     decision=decision.model_dump(exclude_none=True),
                     raw_response=raw,
+                    capture_token=observation.capture_token,
+                    control_lease=lease.as_dict(),
                 )
                 console.print(
                     f"[bold]Step {step}/{limit}[/bold] [cyan]{decision.action}[/cyan]: "
@@ -226,24 +296,18 @@ class DesktopAgent:
                 )
 
                 if decision.action == "ask_user":
+                    self.overlay.status("USER INPUT REQUIRED", "question")
                     if not interactive:
-                        outcome = RunOutcome(
-                            False,
-                            decision.message or "Agent requested user input.",
-                            logger.run_id,
-                            str(logger.run_dir),
-                            step,
-                        )
-                        logger.update_manifest(status="needs_input", steps=step)
-                        return outcome
-                    return_hwnd = observation.target.hwnd
+                        summary = decision.message or "Agent requested user input."
+                        logger.update_manifest(status="needs_input", steps=step, summary=summary)
+                        return RunOutcome(False, summary, logger.run_id, str(logger.run_dir), step)
                     try:
                         answer = Prompt.ask(decision.message or "The agent needs guidance")
                     except EOFError:
                         logger.update_manifest(status="input_closed", steps=step)
                         return RunOutcome(
                             False,
-                            "Input stream closed while the agent was waiting for guidance.",
+                            "Input stream closed while waiting for guidance.",
                             logger.run_id,
                             str(logger.run_dir),
                             step,
@@ -253,36 +317,29 @@ class DesktopAgent:
                     history.append(self._history_item(step, decision, last_result))
                     logger.event("user_guidance", summary=answer, step=step)
                     repeat.clear()
-                    self._restore_after_prompt(return_hwnd, controller.hwnd)
                     continue
 
                 if decision.action == "fail":
                     summary = decision.message or decision.reason
                     logger.event("run_failed", summary=summary, step=step)
                     logger.update_manifest(status="failed", steps=step, summary=summary)
+                    self.overlay.status("FAILED", "error")
                     return RunOutcome(False, summary, logger.run_id, str(logger.run_dir), step)
 
                 if decision.action == "done":
                     rejection: str | None = None
-                    next_hint: str | None = None
+                    hint: str | None = None
                     if last_result is not None and not last_result.ok:
-                        rejection = "The immediately preceding action failed, so completion cannot be accepted."
-                        next_hint = "Recover from the failed action before declaring completion."
-                    elif (
-                        not allow_controller
-                        and observation.target.hwnd is not None
-                        and observation.target.hwnd == controller.hwnd
-                    ):
-                        rejection = "The visible window is the protected Agent OS controller, not the destination application."
-                        next_hint = "Activate or open the intended destination window first."
+                        rejection = "The immediately preceding action failed."
+                        hint = "Recover before declaring completion."
                     elif self.settings.verify_done:
                         verify_prompt = self.prompts.build_verifier_prompt(
                             task,
                             observation,
+                            lease,
                             decision.reason,
-                            requested_target=target_spec,
-                            controller_window=controller,
-                            controller_protected=not allow_controller,
+                            controller,
+                            not allow_controller,
                         )
                         verification, verify_raw = self.planner.verify(
                             verify_prompt,
@@ -297,78 +354,52 @@ class DesktopAgent:
                         )
                         if not verification.complete:
                             rejection = verification.evidence
-                            next_hint = verification.next_hint or "Inspect the destination again."
-
-                    if rejection is not None:
+                            hint = verification.next_hint or "Inspect the controlled target again."
+                    if rejection:
                         rejected_done_count += 1
                         last_result = ExecutionResult(
                             ok=False,
-                            summary=f"Completion rejected: {rejection} Hint: {next_hint}",
+                            summary=f"Completion rejected: {rejection} Hint: {hint}",
                         )
                         history.append(self._history_item(step, decision, last_result))
                         logger.event(
                             "completion_rejected",
                             summary=last_result.summary,
                             step=step,
-                            rejected_done_count=rejected_done_count,
                         )
                         console.print(f"  [yellow]NOT DONE:[/yellow] {rejection}")
-                        if next_hint:
-                            console.print(f"  [yellow]Next:[/yellow] {next_hint}")
+                        if hint:
+                            console.print(f"  [yellow]Next:[/yellow] {hint}")
                         if rejected_done_count >= 2:
                             guidance.append(
-                                "Completion was rejected repeatedly. Do not return done again until visible "
-                                "evidence proves the exact requested result. Change strategy or ask the user."
+                                "Completion was rejected repeatedly. Change strategy and require exact evidence."
                             )
-                        repeat.add(f"rejected_done|{decision.signature()}")
                         continue
-
                     summary = decision.message or decision.reason
                     logger.event("run_completed", summary=summary, step=step)
-                    logger.update_manifest(status="completed", steps=step, summary=summary)
+                    logger.update_manifest(
+                        status="completed",
+                        steps=step,
+                        summary=summary,
+                        control_lease=lease.as_dict(),
+                    )
+                    self.overlay.status("COMPLETED", "ready")
                     return RunOutcome(True, summary, logger.run_id, str(logger.run_dir), step)
 
-                signature_count = repeat.add(decision.signature())
-                if signature_count >= self.settings.repeat_limit:
+                count = repeat.add(decision.signature())
+                if count >= self.settings.repeat_limit:
                     stuck_count += 1
                     last_result = ExecutionResult(
                         ok=False,
                         summary=(
-                            f"Stuck detector blocked repeated action {decision.action} "
-                            f"{signature_count} times. Choose a different semantic tool, inspect UI elements, "
-                            "change windows, or ask the user."
+                            f"Stuck detector blocked repeated {decision.action} action {count} times."
                         ),
                     )
-                    logger.event(
-                        "stuck_detected",
-                        summary=last_result.summary,
-                        step=step,
-                        decision=decision.model_dump(exclude_none=True),
-                    )
                     history.append(self._history_item(step, decision, last_result))
+                    logger.event("stuck_detected", summary=last_result.summary, step=step)
                     console.print(f"  [yellow]BLOCKED:[/yellow] {last_result.summary}")
                     if stuck_count >= 2:
-                        if interactive:
-                            try:
-                                answer = Prompt.ask(
-                                    "Agent is still stuck. Give guidance, or type STOP",
-                                    default="STOP",
-                                )
-                            except EOFError:
-                                answer = "STOP"
-                            if answer.strip().upper() == "STOP":
-                                logger.update_manifest(status="stopped_stuck", steps=step)
-                                return RunOutcome(
-                                    False,
-                                    "Stopped after repeated actions.",
-                                    logger.run_id,
-                                    str(logger.run_dir),
-                                    step,
-                                )
-                            guidance.append(answer)
-                            repeat.clear()
-                            stuck_count = 0
-                        else:
+                        if not interactive:
                             logger.update_manifest(status="stopped_stuck", steps=step)
                             return RunOutcome(
                                 False,
@@ -377,6 +408,25 @@ class DesktopAgent:
                                 str(logger.run_dir),
                                 step,
                             )
+                        try:
+                            answer = Prompt.ask(
+                                "Agent is stuck. Give guidance, or type STOP",
+                                default="STOP",
+                            )
+                        except EOFError:
+                            answer = "STOP"
+                        if answer.strip().upper() == "STOP":
+                            logger.update_manifest(status="stopped_stuck", steps=step)
+                            return RunOutcome(
+                                False,
+                                "Stopped after repeated actions.",
+                                logger.run_id,
+                                str(logger.run_dir),
+                                step,
+                            )
+                        guidance.append(answer)
+                        repeat.clear()
+                        stuck_count = 0
                     continue
 
                 x, y = self._annotation_coordinates(decision, observation)
@@ -389,7 +439,36 @@ class DesktopAgent:
                         logger.screenshot_path(step, "action"),
                     )
 
-                result = self.executor.execute(decision, observation)
+                before_windows = observation.windows
+                result = self.executor.execute(
+                    decision,
+                    observation,
+                    lease,
+                    logger.run_dir,
+                )
+                changed, lease_label = lease_manager.discover_after_action(
+                    decision,
+                    result,
+                    before_windows,
+                )
+                if lease.backend == "browser" and not overlay_started and lease.monitor_rect:
+                    self.overlay.start(
+                        lease.monitor_rect,
+                        f"MONITOR {lease.monitor_index} · LEASE {lease.lease_id}",
+                    )
+                    overlay_started = True
+                lease_generation_changed = lease.generation != logged_lease_generation
+                if changed or lease_generation_changed:
+                    logged_lease_generation = lease.generation
+                    console.print(f"  [magenta]BOUND:[/magenta] {lease.label()}")
+                    logger.event(
+                        "lease_bound",
+                        summary=lease_label or lease.label(),
+                        step=step,
+                        control_lease=lease.as_dict(),
+                    )
+                    logger.update_manifest(control_lease=lease.as_dict())
+
                 last_result = result
                 history.append(self._history_item(step, decision, result))
                 logger.event(
@@ -397,6 +476,7 @@ class DesktopAgent:
                     summary=result.summary,
                     step=step,
                     result=result.model_dump(),
+                    control_lease=lease.as_dict(),
                 )
                 console.print(
                     f"  {'[green]OK[/green]' if result.ok else '[red]FAILED[/red]'}: {result.summary}"
@@ -408,12 +488,17 @@ class DesktopAgent:
             summary = f"Maximum step limit ({limit}) reached before completion."
             logger.event("run_failed", summary=summary, step=limit)
             logger.update_manifest(status="max_steps", steps=limit, summary=summary)
+            self.overlay.status("MAX STEPS", "error")
             return RunOutcome(False, summary, logger.run_id, str(logger.run_dir), limit)
         except KeyboardInterrupt:
             logger.event("run_interrupted", summary="Stopped by Ctrl+C.")
-            logger.update_manifest(status="interrupted")
+            logger.update_manifest(status="interrupted", control_lease=lease.as_dict())
+            self.overlay.status("STOPPED", "error")
             raise
         except Exception as exc:
             logger.event("run_crashed", summary=str(exc), error_type=type(exc).__name__)
-            logger.update_manifest(status="crashed", summary=str(exc))
+            logger.update_manifest(status="crashed", summary=str(exc), control_lease=lease.as_dict())
+            self.overlay.status("CRASHED", "error")
             raise
+        finally:
+            self.overlay.stop()
