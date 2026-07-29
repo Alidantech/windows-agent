@@ -6,7 +6,7 @@ from agent_os.tools import ToolExecutor as BaseToolExecutor
 
 
 class ToolExecutor(BaseToolExecutor):
-    """Promote deterministic evidence and resolve local sensitive values."""
+    """Promote deterministic evidence and resolve local form values."""
 
     def __init__(self, *args, cancellation=None, **kwargs) -> None:
         self.cancellation = cancellation
@@ -20,19 +20,57 @@ class ToolExecutor(BaseToolExecutor):
             decision.action in {"fill_element", "type_text"}
             and decision.text == LOCAL_VALUE_TOKEN
         ):
+            if decision.action != "fill_element" or not decision.element_id:
+                return ExecutionResult(
+                    ok=False,
+                    summary=(
+                        "A local form value requires an exact fill_element target. "
+                        "Select the intended field instead of using free typing."
+                    ),
+                )
+            element = next(
+                (
+                    item
+                    for item in observation.uia.elements
+                    if item.element_id == decision.element_id
+                ),
+                None,
+            )
+            if element is None:
+                return ExecutionResult(
+                    ok=False,
+                    summary="The selected field is stale. Capture the page and select it again.",
+                )
+            target = " ".join(
+                part
+                for part in (
+                    element.name,
+                    element.control_type,
+                    element.automation_id or "",
+                )
+                if part
+            )
+            if not local_value_vault.matches_target(target):
+                return ExecutionResult(
+                    ok=False,
+                    summary=(
+                        "The locally supplied value belongs to a different field. "
+                        "Ask the user for the value required by this field."
+                    ),
+                )
             value = local_value_vault.get()
             if value is None:
                 return ExecutionResult(
                     ok=False,
                     summary=(
-                        "The sensitive value is no longer available locally. "
+                        "The local form value is no longer available. "
                         "Ask the user for it again."
                     ),
                 )
             decision = decision.model_copy(
                 update={
                     "text": value,
-                    "reason": "Use the sensitive value supplied locally by the user.",
+                    "reason": "Use the form value supplied locally by the user.",
                 }
             )
         return super().execute(decision, observation, lease, artifact_dir)
