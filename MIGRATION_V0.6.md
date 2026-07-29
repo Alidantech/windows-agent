@@ -1,28 +1,28 @@
 # Migration to Windows Agent v0.6
 
-## Pull and reinstall
+## Pull and synchronize with uv
+
+Install uv once:
+
+```bash
+powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
+```
+
+Close and reopen Git Bash, then run:
 
 ```bash
 cd ~/Projects/windows-agent
-git pull origin master
+deactivate 2>/dev/null || true
 rm -rf .venv
-python -m venv .venv
-source .venv/Scripts/activate
-python -m pip install --upgrade pip
-python -m pip install -e ".[dev]"
-python -m playwright install chromium
+git pull origin master
+uv sync
+uv run playwright install chromium
 ```
 
-Optional providers:
+Start the console without activating an environment:
 
 ```bash
-python -m pip install -e ".[openai,mistral]"
-```
-
-## Start the new console
-
-```bash
-windows-agent
+uv run windows-agent
 ```
 
 The old argument-heavy form has been removed. Do not run:
@@ -42,7 +42,7 @@ Use the persistent console instead:
 Open defytickets.com and smoke test every unique same-origin link
 ```
 
-## Configuration rename is now final
+## Configuration rename is final
 
 Only `WINDOWS_AGENT_*` settings are loaded. Remove stale `AGENT_OS_*` entries from `.env`.
 
@@ -57,3 +57,7 @@ Use `/key set PROVIDER` to save keys in Windows Credential Manager. Existing env
 ## Runtime folders
 
 The runtime state folder is `.windows-agent/`. The old `.agent-os/` folder can be deleted after confirming the new browser profile works.
+
+## Python project management
+
+The supported workflow is now uv-only. See `MIGRATION_UV.md` and `docs/UV.md`. Do not manually create, activate, or install into `.venv`.
