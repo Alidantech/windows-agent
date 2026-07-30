@@ -6,11 +6,30 @@ from agent_os.interaction_policy import UserIntervention
 
 
 class InteractionPolicy(BaseInteractionPolicy):
-    """Combine protected-value prompts with action-time side-effect confirmations."""
+    """Combine protected-value prompts with single-use action-time confirmations."""
 
     def __init__(self) -> None:
         super().__init__()
         self.confirmations = ConfirmationPolicy()
+        self._used_confirmation_entries: set[str] = set()
+
+    def reset(self) -> None:
+        self._used_confirmation_entries.clear()
+
+    def _consume_prior_confirmation(
+        self,
+        risk_code: str,
+        guidance: list[str],
+    ) -> bool:
+        prefix = f"Confirmed risk {risk_code}:"
+        for entry in reversed(guidance):
+            if not entry.startswith(prefix):
+                continue
+            if entry in self._used_confirmation_entries:
+                return False
+            self._used_confirmation_entries.add(entry)
+            return True
+        return False
 
     def required_intervention(
         self,
@@ -51,6 +70,8 @@ class InteractionPolicy(BaseInteractionPolicy):
                 guidance_label=f"User takeover for {assessment.risk_code}",
                 mode="manual",
             )
+        if self._consume_prior_confirmation(assessment.risk_code, guidance):
+            return None
         return UserIntervention(
             assessment.user_question or assessment.reason,
             sensitive=assessment.sensitive,
