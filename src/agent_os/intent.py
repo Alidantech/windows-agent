@@ -54,7 +54,9 @@ class IntentRouter:
         re.IGNORECASE,
     )
     _CONTINUATION = re.compile(
-        r"^(?:continue|proceed|next|go\s+on|carry\s+on|finish|complete|"
+        r"^(?:continue|proceed|next|go\s+on|carry\s+on|finish|complete|follow|"
+        r"create(?:\s+(?:an?|the))?\s+(?:event|record|item|booking|order|profile)|"
+        r"follow\s+(?:the\s+)?(?:event\s+creation|form|workflow|process)|"
         r"create\s+(?:an?\s+)?account|sign\s*up|register|log\s*in|login|sign\s*in|"
         r"fill|submit|click|select|choose|enter|verify|use\s+the\s+site)\b",
         re.IGNORECASE,
