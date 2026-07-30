@@ -2,14 +2,14 @@ from __future__ import annotations
 
 from contextlib import suppress
 
-from agent_os.browser_semantic import BrowserController
+from agent_os.browser_semantic_runtime import BrowserController
 from agent_os.runtime_v10 import DesktopAgent as BaseDesktopAgent
 from agent_os.runtime_v10 import RunOutcome
 from agent_os.tools_controls import ToolExecutor
 
 
 class DesktopAgent(BaseDesktopAgent):
-    """Use stable semantic browser handles and live self-healing locators."""
+    """Use stable semantic browser handles and visible live self-healing locators."""
 
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
