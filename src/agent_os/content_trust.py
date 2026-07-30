@@ -135,5 +135,9 @@ TRANSMISSION_ACTION_WORDS = re.compile(
 def action_may_transmit(action: str, element_label: str, text: str | None = None) -> bool:
     if action in {"open_url", "scroll", "move", "wait", "inspect_region"}:
         return False
+    # Entering text into a third-party form is itself a transmission. Whether it is
+    # sensitive is decided separately from the field label and task authorization.
+    if action in {"fill_element", "type_text"}:
+        return True
     corpus = " ".join(part for part in (element_label, text or "") if part)
     return bool(TRANSMISSION_ACTION_WORDS.search(corpus))
