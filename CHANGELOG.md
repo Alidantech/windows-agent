@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.6.6
+## 0.6.5 — autonomous form-completion hotfix
 
 - Made direct requests to complete, fill, finish, or follow a reversible form/setup workflow an autonomy grant by default.
 - Removed the blanket executor veto that asked for every required non-personal field whose exact value was absent from the user message.
@@ -10,7 +10,7 @@
 - Preserved one stable generated form plan across all steps, including the original timestamped slug.
 - Added regression coverage for the exact event-creation workflow and delegation phrases reported from the Windows console.
 
-## 0.6.5
+### Earlier 0.6.5 changes
 
 - Added bounded autonomy grants for demo, sample, test, mock, and delegated-default workflows.
 - Added deterministic future demo-event defaults for title, short name, unique slug, dates, capacity, category preference, timezone preference, seating, and online mode.
