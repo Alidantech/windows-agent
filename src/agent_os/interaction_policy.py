@@ -123,17 +123,22 @@ class InteractionPolicy:
                 mode="manual",
             )
 
-        if decision.action in {"fill_element", "type_text"} and decision.text is not None:
+        value = (
+            decision.option
+            if decision.action == "select_option"
+            else decision.text
+            if decision.action in {"fill_element", "type_text"}
+            else None
+        )
+        if value is not None:
             label = element_name or "requested field"
             if (
-                decision.text == LOCAL_VALUE_TOKEN
+                decision.action == "fill_element"
+                and value == LOCAL_VALUE_TOKEN
                 and local_value_vault.matches_target(label)
             ):
                 return None
-            if self._PASSWORD.search(label) and not self._value_was_supplied(
-                decision.text,
-                corpus,
-            ):
+            if self._PASSWORD.search(label) and not self._value_was_supplied(value, corpus):
                 return UserIntervention(
                     "Enter the password you want Windows Agent to use. "
                     "The answer will be masked.",
@@ -141,10 +146,7 @@ class InteractionPolicy:
                     guidance_label="Password supplied by user",
                     mode="replace_text",
                 )
-            if self._OTP.search(label) and not self._value_was_supplied(
-                decision.text,
-                corpus,
-            ):
+            if self._OTP.search(label) and not self._value_was_supplied(value, corpus):
                 return UserIntervention(
                     "Enter the verification code shown or sent to you. "
                     "The answer will be masked.",
@@ -153,10 +155,7 @@ class InteractionPolicy:
                     mode="replace_text",
                 )
             for pattern, friendly_name in self._PERSONAL_FIELDS:
-                if pattern.search(label) and not self._value_was_supplied(
-                    decision.text,
-                    corpus,
-                ):
+                if pattern.search(label) and not self._value_was_supplied(value, corpus):
                     return UserIntervention(
                         f"What {friendly_name} should I enter?",
                         sensitive=True,
