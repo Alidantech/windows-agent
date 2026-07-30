@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import re
 from typing import Any
 
 from agent_os.targeting import window_match_score
@@ -26,7 +25,9 @@ class WindowManager(BaseWindowManager):
                 f"Expected one exact window for {query!r}, found {len(exact)}: {candidates}"
             )
 
-        containing = [item for item in windows if wanted and wanted in self._normalized(item.title)]
+        containing = [
+            item for item in windows if wanted and wanted in self._normalized(item.title)
+        ]
         if len(containing) == 1:
             return containing[0]
         if len(containing) > 1:
@@ -43,7 +44,7 @@ class WindowManager(BaseWindowManager):
             key=lambda pair: pair[0],
             reverse=True,
         )
-        strong = [item for score, item in scored if score >= 0.72]
+        strong = [item for score, item in scored if score >= 72.0]
         if len(strong) == 1:
             return strong[0]
         nearest = ", ".join(
@@ -79,9 +80,9 @@ class WindowManager(BaseWindowManager):
     @staticmethod
     def desktop_locked() -> bool:
         try:
+            import psutil
             import win32gui
             import win32process
-            import psutil
 
             hwnd = int(win32gui.GetForegroundWindow())
             if not hwnd:
@@ -89,7 +90,10 @@ class WindowManager(BaseWindowManager):
             _thread_id, pid = win32process.GetWindowThreadProcessId(hwnd)
             process = psutil.Process(pid).name().casefold()
             title = (win32gui.GetWindowText(hwnd) or "").casefold()
-            return process in {"lockapp.exe", "logonui.exe"} or "windows default lock screen" in title
+            return (
+                process in {"lockapp.exe", "logonui.exe"}
+                or "windows default lock screen" in title
+            )
         except Exception:
             return False
 
