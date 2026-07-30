@@ -8,6 +8,7 @@ from agent_os.capture import CapturedObservation
 from agent_os.lease import TargetLease
 from agent_os.models import ExecutionResult, WindowInfo
 from agent_os.skills import Skill
+from agent_os.task_contract import TaskContract
 
 
 class PromptBuilder:
@@ -61,8 +62,18 @@ class PromptBuilder:
         settings_summary: dict[str, object],
         session_context: list[dict[str, object]] | None = None,
     ) -> str:
+        contract = TaskContract.from_task(task)
         context = {
             "task": task,
+            "task_contract": {
+                "requested_url": contract.requested_url,
+                "navigation_only": contract.navigation_only,
+                "immutable_scope": contract.scope_summary,
+                "rule": (
+                    "Never infer an adjacent workflow. When the exact requested end state is "
+                    "visible, return done immediately."
+                ),
+            },
             "step": step,
             "control_lease": lease.as_dict(),
             "settings": settings_summary,
@@ -71,6 +82,16 @@ class PromptBuilder:
                 "capture_source": observation.target.capture_source,
                 "target": observation.target.model_dump(),
                 "rule": "Every action must apply only to this exact leased target.",
+            },
+            "visual_grounding": {
+                "mode": observation.state.get("visual_grounding", "none"),
+                "grounding_image": observation.state.get("grounding_image"),
+                "marks": observation.state.get("grounding_marks", 0),
+                "coordinate_space": observation.state.get("coordinate_space"),
+                "rule": (
+                    "Colored boxes and labels in the model image correspond exactly to "
+                    "ui_elements.element_id. Prefer element IDs over coordinate clicks."
+                ),
             },
             "controller_window": {
                 "hwnd": controller_window.hwnd,
@@ -89,10 +110,11 @@ class PromptBuilder:
             "persistent_session_context": (session_context or [])[-12:],
         }
         return (
-            "Select exactly one next action for this actionable computer task.\n\n"
+            "Select exactly one next action for this actionable computer task. "
+            "Do not continue merely because another control looks useful.\n\n"
             f"TASK CONTEXT (JSON):\n{json.dumps(context, indent=2, ensure_ascii=False)}\n\n"
             f"SELECTED SKILLS:\n{self._skills_text(skills)}\n\n"
-            "The screenshot follows. Return only the typed action object."
+            "The grounded screenshot follows. Return only the typed action object."
         )
 
     def build_verifier_prompt(
@@ -105,8 +127,14 @@ class PromptBuilder:
         controller_protected: bool,
         last_result: ExecutionResult | None = None,
     ) -> str:
+        contract = TaskContract.from_task(task)
         context = {
             "task": task,
+            "task_contract": {
+                "requested_url": contract.requested_url,
+                "navigation_only": contract.navigation_only,
+                "immutable_scope": contract.scope_summary,
+            },
             "candidate_completion_reason": decision_reason,
             "control_lease": lease.as_dict(),
             "capture_token": observation.capture_token,
@@ -119,11 +147,13 @@ class PromptBuilder:
                 "process": controller_window.process_name,
                 "protected": controller_protected,
             },
-            "ui_elements": [item.model_dump() for item in observation.uia.elements[:80]],
+            "ui_elements": [item.model_dump() for item in observation.uia.elements[:100]],
         }
         return (
-            "Verify whether the exact task is complete in this fresh leased observation. "
+            "Verify only the exact user request in this fresh leased observation. "
+            "For a navigation-only request, a matching current URL or valid redirect is "
+            "completion; clicking or filling an adjacent workflow is scope overrun. "
             "An attempted action is not evidence of success, but a visibly changed destination "
-            "page or a successful deterministic tool result is valid evidence.\n\n"
+            "page or successful deterministic tool result is valid evidence.\n\n"
             f"CONTEXT:\n{json.dumps(context, indent=2, ensure_ascii=False)}"
         )
