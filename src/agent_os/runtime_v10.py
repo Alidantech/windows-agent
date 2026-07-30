@@ -8,17 +8,18 @@ from agent_os.overlay import NullOverlay
 from agent_os.overlay_edges import EdgeOverlay
 from agent_os.runtime_v08 import DesktopAgent as BaseDesktopAgent
 from agent_os.runtime_v08 import RunOutcome
+from agent_os.tools_controls import ToolExecutor
 
 
 class DesktopAgent(BaseDesktopAgent):
-    """Use an in-page browser cursor and an edge-only Windows focus overlay."""
+    """Use in-page browser controls and an edge-only Windows focus overlay."""
 
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
 
         previous_browser = self.browser
+        previous_executor = self.executor
         self.browser = BrowserController(self.settings, self.cancellation)
-        self.executor.browser = self.browser
         with suppress(Exception):
             previous_browser.close(force=True)
 
@@ -28,9 +29,19 @@ class DesktopAgent(BaseDesktopAgent):
             if self.settings.overlay_enabled and platform.system() == "Windows"
             else NullOverlay()
         )
-        self.executor.overlay = self.overlay
         with suppress(Exception):
             previous_overlay.stop()
+
+        self.executor = ToolExecutor(
+            self.settings,
+            self.launcher,
+            self.windows,
+            self.browser,
+            self.overlay,
+            cancellation=self.cancellation,
+            dry_run=previous_executor.dry_run,
+            auto_confirm=previous_executor.auto_confirm,
+        )
 
     def set_overlay(self, enabled: bool) -> None:
         self.overlay.stop()
