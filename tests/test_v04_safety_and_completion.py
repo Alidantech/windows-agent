@@ -2,7 +2,7 @@ import pytest
 
 from agent_os.cancellation import AgentCancelled, CancellationToken
 from agent_os.models import ExecutionResult, Rectangle
-from agent_os.overlay import AgentOverlay, _border_rectangles
+from agent_os.overlay import AgentOverlay, _gradient_rectangles
 
 
 def test_cancellation_token_interrupts_wait() -> None:
@@ -40,7 +40,13 @@ def test_deterministic_tool_result_can_complete_task() -> None:
 
 def test_overlay_layout_never_contains_monitor_sized_window() -> None:
     monitor = Rectangle(left=1920, top=0, width=1920, height=1080)
-    strips = _border_rectangles(monitor)
-    assert len(strips) == 4
+    strips = tuple(strip for strip, _alpha in _gradient_rectangles(monitor))
+    center_x = monitor.left + monitor.width // 2
+    center_y = monitor.top + monitor.height // 2
+
+    assert len(strips) == 40
     assert all(strip.width < monitor.width or strip.height < monitor.height for strip in strips)
-    assert sum(strip.width * strip.height for strip in strips) < monitor.width * monitor.height // 20
+    assert not any(strip.contains(center_x, center_y) for strip in strips)
+    assert sum(strip.width * strip.height for strip in strips) < (
+        monitor.width * monitor.height // 8
+    )
