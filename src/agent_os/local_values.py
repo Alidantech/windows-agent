@@ -7,7 +7,13 @@ LOCAL_VALUE_TOKEN = "__WINDOWS_AGENT_SECRET__"
 
 
 class LocalValueVault:
-    """Keep one user-supplied value out of model prompts and logs."""
+    """Keep one user-supplied form value out of model prompts and logs."""
+
+    _STOPWORDS = {
+        "what", "which", "should", "would", "could", "please", "enter", "use",
+        "value", "required", "optional", "field", "input", "textbox", "box", "the",
+        "a", "an", "for", "to", "i", "me", "you", "want", "windows", "agent",
+    }
 
     def __init__(self) -> None:
         self._lock = threading.Lock()
@@ -35,6 +41,13 @@ class LocalValueVault:
                 return kind
         return None
 
+    @classmethod
+    def _tokens(cls, text: str) -> set[str]:
+        quoted = re.search(r"['\"]([^'\"]{2,160})['\"]", text)
+        candidate = quoted.group(1) if quoted else text
+        words = set(re.findall(r"[a-z0-9]+", candidate.lower()))
+        return {word for word in words if word not in cls._STOPWORDS and len(word) > 1}
+
     def set(self, value: str, *, purpose: str) -> None:
         if value == "":
             raise ValueError("A local form value cannot be empty.")
@@ -50,9 +63,18 @@ class LocalValueVault:
         with self._lock:
             if self._value is None:
                 return False
-            expected = self._field_kind(self._purpose)
+            purpose = self._purpose
+        expected = self._field_kind(purpose)
         actual = self._field_kind(target)
-        return expected is not None and expected == actual
+        if expected is not None or actual is not None:
+            return expected is not None and expected == actual
+        expected_tokens = self._tokens(purpose)
+        actual_tokens = self._tokens(target)
+        if not expected_tokens or not actual_tokens:
+            return False
+        return expected_tokens.issubset(actual_tokens) or (
+            len(expected_tokens & actual_tokens) / len(expected_tokens) >= 0.75
+        )
 
     def clear(self) -> None:
         with self._lock:
