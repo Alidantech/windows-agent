@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 from datetime import UTC, datetime
@@ -37,6 +38,8 @@ class RunLogger:
         self.events_path = self.run_dir / "events.jsonl"
         self.text_path = self.run_dir / "agent.log"
         self.manifest_path = self.run_dir / "manifest.json"
+        self._event_sequence = 0
+        self._previous_event_hash = "GENESIS"
         self._write_manifest(
             {
                 "run_id": self.run_id,
@@ -45,6 +48,11 @@ class RunLogger:
                 "target": target,
                 "model": model,
                 "status": "running",
+                "event_log": {
+                    "path": str(self.events_path),
+                    "hash_chain": "sha256",
+                    "genesis": self._previous_event_hash,
+                },
             }
         )
 
@@ -63,18 +71,37 @@ class RunLogger:
         current.update(_redact(updates))
         self._write_manifest(current)
 
+    @staticmethod
+    def _event_hash(record: dict[str, Any]) -> str:
+        encoded = json.dumps(record, sort_keys=True, ensure_ascii=False, default=str).encode(
+            "utf-8"
+        )
+        return hashlib.sha256(encoded).hexdigest()
+
     def event(self, event_type: str, **payload: Any) -> None:
+        self._event_sequence += 1
         record = {
+            "sequence": self._event_sequence,
             "timestamp": self._now(),
             "type": event_type,
+            "previous_hash": self._previous_event_hash,
             **_redact(payload),
         }
+        record["event_hash"] = self._event_hash(record)
+        self._previous_event_hash = str(record["event_hash"])
         with self.events_path.open("a", encoding="utf-8") as handle:
             handle.write(json.dumps(record, ensure_ascii=False) + "\n")
-
         summary = payload.get("summary") or payload.get("message") or ""
         with self.text_path.open("a", encoding="utf-8") as handle:
             handle.write(f"[{record['timestamp']}] {event_type}: {summary}\n")
+        self.update_manifest(
+            event_log={
+                "path": str(self.events_path),
+                "hash_chain": "sha256",
+                "events": self._event_sequence,
+                "head": self._previous_event_hash,
+            }
+        )
 
     def screenshot_path(self, step: int, suffix: str = "before") -> Path:
         return self.screens_dir / f"step-{step:03d}-{suffix}.png"
