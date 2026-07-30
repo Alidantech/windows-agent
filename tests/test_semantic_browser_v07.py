@@ -6,7 +6,7 @@ import pytest
 from pydantic import ValidationError
 
 from agent_os.agent import DesktopAgent
-from agent_os.browser_semantic import SemanticBrowserElementRef
+from agent_os.browser_semantic import BrowserController, SemanticBrowserElementRef
 from agent_os.interaction_policy import InteractionPolicy
 from agent_os.models import AgentDecision, Rectangle, UIElement
 
@@ -28,6 +28,50 @@ def _element(name: str, role: str = "combobox") -> UIElement:
         required=True,
         has_value=False,
     )
+
+
+class _FakeLocator:
+    def __init__(self, labels: list[str]):
+        self.labels = labels
+
+    @property
+    def first(self):
+        return self.nth(0)
+
+    def count(self) -> int:
+        return len(self.labels)
+
+    def nth(self, index: int):
+        return _FakeLocator([self.labels[index]])
+
+    def is_visible(self) -> bool:
+        return bool(self.labels)
+
+
+class _FakePage:
+    def __init__(self) -> None:
+        self.live_option = _FakeLocator(["Live Performance"])
+        self.empty = _FakeLocator([])
+
+    def is_closed(self) -> bool:
+        return False
+
+    def locator(self, _selector: str):
+        return self.empty
+
+    def get_by_label(self, _name: str, exact: bool = True):
+        return self.empty
+
+    def get_by_role(self, role: str, name: str, exact: bool = True):
+        if role == "option" and name == "Live Performance" and exact:
+            return self.live_option
+        return self.empty
+
+    def get_by_text(self, _name: str, exact: bool = True):
+        return self.empty
+
+    def get_by_placeholder(self, _name: str, exact: bool = True):
+        return self.empty
 
 
 def test_select_option_is_a_typed_action() -> None:
@@ -63,6 +107,20 @@ def test_semantic_reference_carries_live_locator_fingerprint() -> None:
     assert ref.role == "combobox"
     assert ref.name == "Category"
     assert ref.automation_id == "category"
+
+
+def test_stale_captured_selector_recovers_by_live_role_and_name() -> None:
+    controller = BrowserController.__new__(BrowserController)
+    controller._page = _FakePage()
+    ref = SemanticBrowserElementRef(
+        selector='[data-windows-agent-id="B0059"]',
+        element_id="E0019",
+        role="option",
+        name="Live Performance",
+    )
+    resolved = controller._locator(ref)
+    assert resolved.count() == 1
+    assert resolved.labels == ["Live Performance"]
 
 
 def test_ordinary_semantic_select_does_not_interrupt() -> None:
