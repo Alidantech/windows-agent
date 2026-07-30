@@ -1,8 +1,12 @@
 # Changelog
 
-## Unreleased
+## 0.6.2
 
-- Added `virtual`, `system`, and `off` cursor modes. Virtual mode renders a transparent pointing-hand cursor; system mode deliberately moves the one shared Windows cursor and requires physical-input permission.
+- Replaced the Tk-based virtual cursor window with an in-page Playwright `👆🏻` cursor rendered through `page.evaluate()` and isolated shadow DOM.
+- Added `pointer-events: none`, CSS-pixel animation, click-pulse feedback, and screenshot hiding for the browser cursor.
+- Split the Windows overlay into an edge-only focus process that never creates a cursor-shaped window.
+- Removed the legacy hand-overlay runtime from the active inheritance path so the black-square cursor implementation is never instantiated.
+- Added `virtual`, `system`, and `off` cursor modes. System mode deliberately moves the one shared Windows cursor and requires physical-input permission.
 - Added browser form-state capture for value presence, validity, validation messages, missing required fields, visible alerts, submit controls, and meaningful post-click state changes.
 - Added verified `fill_element` results so a fill fails when the value does not remain or browser validation rejects it.
 - Added verified submit/proceed results so missing fields, invalid fields, or a no-op click are reported as failures instead of triggering repeated blind clicks.
@@ -13,7 +17,6 @@
 - Added CSS-pixel browser screenshots and Per Monitor v2 DPI handling so model coordinates, Playwright input, and the visible overlay share one calibrated geometry.
 - Added stable semantic browser element IDs, richer ARIA roles including dropdown options, actionability checks, and automatic scroll-into-view.
 - Added Set-of-Mark high-contrast model images while preserving clean screenshots as evidence.
-- Added an animated transparent AI pointer aligned to the actual Playwright click target, including click-pulse feedback.
 - Replaced opaque focus strips and the large banner with an edge-only transparent gradient whose center is completely uncovered.
 - Added signed, measured virtual mouse-wheel scrolling for focused and nested browser scroll containers.
 - Added focused-locator sequential typing fallback for widgets that require keyboard events.
