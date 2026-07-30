@@ -5,7 +5,8 @@ from agent_os.dpi import enable_per_monitor_v2
 from agent_os.lease import LeaseManager
 from agent_os.models import ExecutionResult
 from agent_os.runlog import RunLogger
-from agent_os.runtime import DesktopAgent as BaseDesktopAgent, RunOutcome
+from agent_os.runtime import DesktopAgent as BaseDesktopAgent
+from agent_os.runtime import RunOutcome
 from agent_os.targeting import task_allows_controller
 from agent_os.task_contract import TaskContract
 from agent_os.terminal_ui import ui

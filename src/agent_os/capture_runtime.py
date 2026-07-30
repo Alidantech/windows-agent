@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from agent_os.capture import CapturedObservation, ScreenCapture as BaseScreenCapture
+from agent_os.capture import CapturedObservation
+from agent_os.capture import ScreenCapture as BaseScreenCapture
 from agent_os.visual_grounding import render_set_of_mark, save_grounding_image
 
 

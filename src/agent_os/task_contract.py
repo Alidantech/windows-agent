@@ -33,7 +33,7 @@ class TaskContract:
     navigation_only: bool = False
 
     @classmethod
-    def from_task(cls, task: str) -> "TaskContract":
+    def from_task(cls, task: str) -> TaskContract:
         normalized = " ".join(task.strip().split())
         match = _URL.search(normalized)
         requested_url = _normalize_url(match.group("url")) if match else None
