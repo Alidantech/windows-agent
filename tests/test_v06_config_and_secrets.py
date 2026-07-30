@@ -36,7 +36,11 @@ def test_parse_model_ref_supports_default_provider() -> None:
 def test_secret_store_uses_environment_fallback(monkeypatch) -> None:
     monkeypatch.setenv("GEMINI_API_KEY", "env-secret")
     store = SecretStore()
-    monkeypatch.setattr(store, "_keyring", lambda: type("K", (), {"get_password": staticmethod(lambda *_: None)})())
+    monkeypatch.setattr(
+        store,
+        "_keyring",
+        lambda: type("K", (), {"get_password": staticmethod(lambda *_: None)})(),
+    )
     assert store.get("gemini") == "env-secret"
     assert store.source("gemini") == "GEMINI_API_KEY"
 
@@ -47,10 +51,11 @@ def test_legacy_agent_os_environment_is_not_promoted(monkeypatch) -> None:
     assert settings.target != "monitor:9"
 
 
-def test_current_default_routes_use_supported_model_ids() -> None:
+def test_current_default_routes_prefer_stronger_agentic_models() -> None:
     assert DEFAULT_AUTO_MODELS[:3] == (
-        "gemini:gemini-3.5-flash-lite",
         "gemini:gemini-3.6-flash",
-        "gemini:gemini-3.1-flash-lite",
+        "gemini:gemini-3.5-flash",
+        "openai:gpt-5-mini",
     )
+    assert DEFAULT_MODELS["gemini"] == "gemini-3.6-flash"
     assert DEFAULT_MODELS["mistral"] == "mistral-small-2603"
