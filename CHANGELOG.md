@@ -1,7 +1,15 @@
 # Changelog
 
-## 0.6.5 — autonomous form-completion hotfix
+## 0.6.5 — autonomous form and semantic browser hotfixes
 
+- Added stable model-facing `E####` browser handles backed by semantic fingerprints instead of relying on one injected DOM attribute surviving React rerenders.
+- Added live self-healing locator resolution using stable ID/name, associated label, ARIA role plus accessible name, exact text, placeholder, and captured-selector fallback.
+- Added the typed `select_option` action so native selects and ARIA comboboxes are controlled through their owning component and verified option label rather than transient option clicks.
+- Added full-document semantic page state: scroll depth, content height, headings above/visible/below, actionable counts and states, and nested scroll-container metrics.
+- Added an ARIA snapshot to browser observations when supported by the installed Playwright version.
+- Added an in-page scroll-depth HUD and synchronized the visible virtual cursor with every Playwright mouse movement step.
+- Added planner rules that make semantic actions mandatory before coordinate fallback and prohibit invented dropdown options.
+- Added regression coverage for stale-selector recovery after a React-style option rerender.
 - Made direct requests to complete, fill, finish, or follow a reversible form/setup workflow an autonomy grant by default.
 - Removed the blanket executor veto that asked for every required non-personal field whose exact value was absent from the user message.
 - Ordinary fields such as event URLs, titles, categories, timezones, dates, capacities, seating choices, toggles, and other reversible configuration values are now selected autonomously.
