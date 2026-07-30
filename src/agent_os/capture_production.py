@@ -109,10 +109,10 @@ class ScreenCapture(BaseScreenCapture):
         self._pending_zoom = None
         width, height = observation.original_image.size
         x1, y1, x2, y2 = region
-        left = max(0, min(width - 1, round(x1 * max(1, width - 1) / 1000)))
-        top = max(0, min(height - 1, round(y1 * max(1, height - 1) / 1000)))
-        right = max(left + 1, min(width, round(x2 * max(1, width - 1) / 1000)))
-        bottom = max(top + 1, min(height, round(y2 * max(1, height - 1) / 1000)))
+        left = max(0, min(width - 1, round(x1 * width / 1000)))
+        top = max(0, min(height - 1, round(y1 * height / 1000)))
+        right = max(left + 1, min(width, round(x2 * width / 1000)))
+        bottom = max(top + 1, min(height, round(y2 * height / 1000)))
         crop = observation.original_image.crop((left, top, right, bottom))
         observation.api_image_bytes = self._api_bytes(crop)
         observation.state["zoom"] = {
