@@ -278,7 +278,6 @@ class ToolExecutor(BaseToolExecutor):
 
     def execute(self, decision, observation, lease, artifact_dir):
         started = time.monotonic()
-        before_id = ObservationLedger.observation_id(observation)
         coordinate = decision.action in {"click", "double_click", "right_click", "move"}
         blocked_strategy = self.recovery.before_action(
             decision.signature(),
