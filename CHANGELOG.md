@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+- Added immutable navigation-only task contracts so visiting a URL cannot drift into unrelated clicks, forms, or creation workflows.
+- Added CSS-pixel browser screenshots and Per Monitor v2 DPI handling so model coordinates, Playwright input, and the visible overlay share one calibrated geometry.
+- Added stable semantic browser element IDs, richer ARIA roles including dropdown options, actionability checks, and automatic scroll-into-view.
+- Added Set-of-Mark high-contrast model images while preserving clean screenshots as evidence.
+- Added an animated transparent AI pointer aligned to the actual Playwright click target, including click-pulse feedback.
+- Replaced opaque focus strips and the large banner with an edge-only transparent gradient whose center is completely uncovered.
+- Added signed, measured virtual mouse-wheel scrolling for focused and nested browser scroll containers.
+- Added focused-locator sequential typing fallback for widgets that require keyboard events.
+- Fixed the form-safety regex that matched `city` inside `capacity`, causing Max capacity to be misclassified as an address field.
 - Added deterministic intent routing so greetings and general questions are answered in the terminal without screenshots or the desktop completion verifier.
 - Added persistent-browser continuation routing for follow-up tasks such as account creation, form completion, login, and verification.
 - Added user-data gates that prevent the planner from inventing names, email addresses, phone numbers, addresses, usernames, passwords, PINs, OTPs, or other identity details.
@@ -40,8 +49,8 @@
 ## 0.5.0
 
 - Rebranded the package as Windows Agent.
-- Introduced Gemini, OpenAI, and Mistral adapters.
+- Introduced Gemini, OpenAI and Mistral adapters.
 
 ## 0.4.0
 
-- Added deterministic smoke-test evidence, cancellation, and safe overlay experiments.
+- Added deterministic smoke-test evidence, cancellation and safe overlay experiments.
