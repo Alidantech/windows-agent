@@ -5,6 +5,7 @@ from typing import Any
 
 from PIL import Image
 
+from agent_os.capabilities import capability_profile
 from agent_os.capture import CapturedObservation
 from agent_os.capture_runtime import ScreenCapture as BaseScreenCapture
 from agent_os.content_trust import ContentTrustAnalyzer
@@ -56,8 +57,12 @@ class ScreenCapture(BaseScreenCapture):
             for item in elements
         )
         focused = next((item.element_id for item in elements if item.focused), None)
-        quality = "strong" if actionable >= 3 and named >= max(1, actionable // 2) else (
-            "partial" if elements else "none"
+        quality = (
+            "strong"
+            if actionable >= 3 and named >= max(1, actionable // 2)
+            else "partial"
+            if elements
+            else "none"
         )
         return {
             "quality": quality,
@@ -116,7 +121,10 @@ class ScreenCapture(BaseScreenCapture):
             "source_region_pixels": [left, top, right, bottom],
             "crop_width": crop.width,
             "crop_height": crop.height,
-            "rule": "The model image is a zoomed inspection crop. Do not use its coordinates for input.",
+            "rule": (
+                "The model image is a zoomed inspection crop. Do not use its coordinates "
+                "for input; return to a fresh full observation before acting."
+            ),
         }
 
     def _production(self, observation: CapturedObservation) -> CapturedObservation:
@@ -151,8 +159,13 @@ class ScreenCapture(BaseScreenCapture):
         )
         if observation.target.backend == "desktop":
             observation.state["desktop_semantic_map"] = self._desktop_semantic_map(observation)
+            if observation.target.hwnd and hasattr(self.windows, "owned_windows"):
+                observation.state["owned_modals"] = self.windows.owned_windows(
+                    observation.target.hwnd
+                )
         trust = self.trust.analyze(observation)
         observation.state["content_trust"] = trust.as_dict()
+        observation.state["capabilities"] = capability_profile(observation).as_dict()
         self.ledger.stamp(
             observation,
             lease_generation=self._lease_generation,
