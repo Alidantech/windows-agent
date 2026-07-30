@@ -33,6 +33,11 @@ class BrowserController(BaseBrowserController):
                   valid = typeof el.checkValidity === 'function' ? el.checkValidity() : null;
                   validationMessage = valid === false ? (el.validationMessage || null) : null;
                 } catch (_) {}
+                const semanticName = (el.getAttribute('aria-label') ||
+                  (el.innerText || el.textContent || '') ||
+                  el.getAttribute('name') || '').replace(/\s+/g, ' ').trim();
+                const submitLike = /\b(?:submit|save|continue|next|finish|publish|create|confirm)\b/i
+                  .test(semanticName);
                 output[id] = {
                   hasValue: Boolean(rawValue),
                   valueLength: rawValue.length,
@@ -41,7 +46,8 @@ class BrowserController(BaseBrowserController):
                   validationMessage,
                   formId: form ? (form.id || form.getAttribute('name') || 'form') : null,
                   isSubmit: (tag === 'button' && type === 'submit') ||
-                    (tag === 'input' && ['submit', 'image'].includes(type)),
+                    (tag === 'input' && ['submit', 'image'].includes(type)) ||
+                    ((tag === 'button' || el.getAttribute('role') === 'button') && submitLike),
                   ariaExpanded: el.hasAttribute('aria-expanded') ?
                     el.getAttribute('aria-expanded') === 'true' : null,
                 };
@@ -157,7 +163,13 @@ class BrowserController(BaseBrowserController):
 
     @staticmethod
     def _state_signature(state: dict[str, object]) -> str:
-        return json.dumps(state, sort_keys=True, ensure_ascii=False, default=str)
+        meaningful = {
+            "url": state.get("url"),
+            "title": state.get("title"),
+            "forms": state.get("forms"),
+            "alerts": state.get("alerts"),
+        }
+        return json.dumps(meaningful, sort_keys=True, ensure_ascii=False, default=str)
 
     def click_element_state(
         self,
