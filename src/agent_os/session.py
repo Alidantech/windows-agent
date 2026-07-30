@@ -5,6 +5,7 @@ import threading
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 
+from agent_os.autonomy import expand_user_answer, question_can_use_grant
 from agent_os.cancellation import CancellationToken
 from agent_os.interaction_policy import question_is_sensitive
 from agent_os.local_values import LOCAL_VALUE_TOKEN, local_value_vault
@@ -61,6 +62,7 @@ class QuestionBroker:
         self._lock = threading.Lock()
         self._question: str | None = None
         self._sensitive = False
+        self._autonomy_grant: str | None = None
         self._answer: queue.Queue[str] = queue.Queue(maxsize=1)
 
     @property
@@ -80,6 +82,8 @@ class QuestionBroker:
             except queue.Empty:
                 break
         with self._lock:
+            if self._autonomy_grant and question_can_use_grant(question):
+                return self._autonomy_grant
             self._question = question
             self._sensitive = (
                 question_is_sensitive(question) if sensitive is None else sensitive
@@ -92,6 +96,11 @@ class QuestionBroker:
                     was_sensitive = self._sensitive
                     self._question = None
                     self._sensitive = False
+                expanded = expand_user_answer(answer, question)
+                if expanded != answer:
+                    with self._lock:
+                        self._autonomy_grant = expanded
+                    return expanded
                 if was_sensitive:
                     local_value_vault.set(answer, purpose=question)
                     return LOCAL_VALUE_TOKEN
@@ -114,6 +123,7 @@ class QuestionBroker:
             was_waiting = self._question is not None
             self._question = None
             self._sensitive = False
+            self._autonomy_grant = None
         local_value_vault.clear()
         if not was_waiting:
             return
