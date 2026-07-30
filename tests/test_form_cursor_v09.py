@@ -49,7 +49,7 @@ def test_non_computer_create_request_stays_conversation():
     assert IntentRouter().route("create a poem").kind == "conversation"
 
 
-def test_required_authored_value_cannot_be_invented():
+def test_required_authored_value_prompts_without_masking():
     decision = AgentDecision(
         action="fill_element",
         element_id="B0001",
@@ -63,7 +63,7 @@ def test_required_authored_value_cannot_be_invented():
         guidance=[],
     )
     assert intervention is not None
-    assert intervention.sensitive is True
+    assert intervention.sensitive is False
     assert "Event title" in intervention.question
 
 
