@@ -10,7 +10,6 @@ from agent_os.models import AgentDecision, UIElement
 if TYPE_CHECKING:
     from agent_os.capture import CapturedObservation
 
-
 InterventionMode = Literal["replace_text", "confirm_action", "manual"]
 
 
@@ -45,7 +44,7 @@ class InteractionPolicy:
         (re.compile(r"\bfull\s+name\b|\byour\s+name\b", re.I), "full name"),
         (re.compile(r"\be-?mail(?:\s+address)?\b", re.I), "email address"),
         (re.compile(r"\bphone|mobile|telephone\b", re.I), "phone number"),
-        (re.compile(r"\baddress|street|city|postal|zip\b", re.I), "address"),
+        (re.compile(r"\b(?:address|street|city|postal|zip)\b", re.I), "address"),
         (re.compile(r"\bcompany|organisation|organization\b", re.I), "company name"),
         (re.compile(r"\buser\s*name|username\b", re.I), "username"),
         (re.compile(r"\bdate\s+of\s+birth|birthday\b", re.I), "date of birth"),
@@ -78,6 +77,25 @@ class InteractionPolicy:
         )
 
     @staticmethod
+    def _element_label(element: UIElement | None) -> str:
+        """Use accessible labels first; automation IDs must not contaminate semantics."""
+
+        if element is None:
+            return ""
+        accessible = " ".join(
+            part.strip()
+            for part in (element.name, element.placeholder or "")
+            if part and part.strip()
+        )
+        if accessible:
+            return accessible
+        return " ".join(
+            part.strip()
+            for part in (element.control_type, element.automation_id or "")
+            if part and part.strip()
+        )
+
+    @staticmethod
     def _value_was_supplied(value: str, corpus: str) -> bool:
         candidate = value.strip()
         if candidate == LOCAL_VALUE_TOKEN:
@@ -95,15 +113,7 @@ class InteractionPolicy:
         guidance: list[str],
     ) -> UserIntervention | None:
         element = self._element(observation, decision.element_id)
-        element_name = " ".join(
-            part
-            for part in (
-                element.name if element else "",
-                element.control_type if element else "",
-                element.automation_id if element and element.automation_id else "",
-            )
-            if part
-        ).strip()
+        element_name = self._element_label(element)
         corpus = "\n".join([task, *guidance])
 
         if self._HUMAN_CHECK.search(element_name):
