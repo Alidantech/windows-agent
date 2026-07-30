@@ -58,9 +58,59 @@ class IntentRouter:
         r"create(?:\s+(?:an?|the))?\s+(?:event|record|item|booking|order|profile)|"
         r"follow\s+(?:the\s+)?(?:event\s+creation|form|workflow|process)|"
         r"create\s+(?:an?\s+)?account|sign\s*up|register|log\s*in|login|sign\s*in|"
-        r"fill|submit|click|select|choose|enter|verify|use\s+the\s+site)\b",
+        r"fill|submit|click|select|choose|enter|verify|use\s+the\s+(?:site|browser)|"
+        r"do\s+it|handle\s+it|just\s+do\s+it)\b",
         re.IGNORECASE,
     )
+    _BROWSER_WORKFLOW = re.compile(
+        r"\b(?:create|make|edit|update|fill|complete|submit|select|choose)\b"
+        r".{0,40}\b(?:event|form|account|profile|booking|order|record|item|page)\b",
+        re.IGNORECASE,
+    )
+    _FUZZY_ACTIONS = {
+        "open",
+        "create",
+        "click",
+        "fill",
+        "select",
+        "scroll",
+        "submit",
+        "continue",
+        "proceed",
+        "use",
+    }
+
+    @staticmethod
+    def _edit_distance_at_most_one(left: str, right: str) -> bool:
+        if left == right:
+            return True
+        if abs(len(left) - len(right)) > 1:
+            return False
+        if len(left) > len(right):
+            left, right = right, left
+        i = j = differences = 0
+        while i < len(left) and j < len(right):
+            if left[i] == right[j]:
+                i += 1
+                j += 1
+                continue
+            differences += 1
+            if differences > 1:
+                return False
+            if len(left) == len(right):
+                i += 1
+            j += 1
+        return True
+
+    @classmethod
+    def _has_fuzzy_action(cls, text: str) -> bool:
+        tokens = re.findall(r"[a-zA-Z]+", text.casefold())[:5]
+        for token in tokens:
+            if len(token) < 4:
+                continue
+            if any(cls._edit_distance_at_most_one(token, verb) for verb in cls._FUZZY_ACTIONS):
+                return True
+        return False
 
     def route(
         self,
@@ -80,7 +130,11 @@ class IntentRouter:
                 "desktop",
                 "question requires observing the assigned computer target",
             )
-        if browser_active and self._CONTINUATION.search(normalized):
+        if browser_active and (
+            self._CONTINUATION.search(normalized)
+            or self._BROWSER_WORKFLOW.search(normalized)
+            or self._has_fuzzy_action(normalized)
+        ):
             return TaskIntent(
                 "desktop",
                 "continuation refers to the persistent browser session",
