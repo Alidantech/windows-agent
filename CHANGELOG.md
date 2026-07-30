@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- Added `virtual`, `system`, and `off` cursor modes. Virtual mode renders a transparent pointing-hand cursor; system mode deliberately moves the one shared Windows cursor and requires physical-input permission.
+- Added browser form-state capture for value presence, validity, validation messages, missing required fields, visible alerts, submit controls, and meaningful post-click state changes.
+- Added verified `fill_element` results so a fill fails when the value does not remain or browser validation rejects it.
+- Added verified submit/proceed results so missing fields, invalid fields, or a no-op click are reported as failures instead of triggering repeated blind clicks.
+- Required user-authored values such as event titles, slugs, dates, capacities, categories, locations, and prices are requested from the user instead of being fabricated as placeholders.
+- Optional fields remain untouched unless the user supplies a value or explicitly requests completion.
+- Added active-browser continuation routing for requests such as `create an event` and `follow event creation process`.
 - Added immutable navigation-only task contracts so visiting a URL cannot drift into unrelated clicks, forms, or creation workflows.
 - Added CSS-pixel browser screenshots and Per Monitor v2 DPI handling so model coordinates, Playwright input, and the visible overlay share one calibrated geometry.
 - Added stable semantic browser element IDs, richer ARIA roles including dropdown options, actionability checks, and automatic scroll-into-view.
