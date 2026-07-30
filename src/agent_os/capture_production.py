@@ -122,8 +122,8 @@ class ScreenCapture(BaseScreenCapture):
             "crop_width": crop.width,
             "crop_height": crop.height,
             "rule": (
-                "The model image is a zoomed inspection crop. Do not use its coordinates "
-                "for input; return to a fresh full observation before acting."
+                "This is an inspection-only zoom crop. Do not use its coordinates for input; "
+                "return to a fresh full observation before acting."
             ),
         }
 
