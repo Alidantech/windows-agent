@@ -83,6 +83,6 @@ def test_max_capacity_is_not_misclassified_as_address():
 def test_grounded_browser_source_features_are_present():
     from agent_os.browser_precision import BrowserController
 
-    source = " ".join(BrowserController._snapshot_elements.__code__.co_consts)
+    source = repr(BrowserController._snapshot_elements.__code__.co_consts)
     assert "role=\"option\"" in source
     assert "data-windows-agent-id" in source
