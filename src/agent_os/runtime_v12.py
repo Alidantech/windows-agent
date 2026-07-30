@@ -35,6 +35,29 @@ class DesktopAgent(BaseDesktopAgent):
         self.capture.set_lease_generation(lease.generation)
         return super()._capture(lease, screenshot_path)
 
+    def _settings_summary(self) -> dict[str, object]:
+        summary = super()._settings_summary()
+        summary.update(
+            {
+                "observation_contract": "single-use",
+                "prompt_injection_policy": self.settings.prompt_injection_policy,
+                "domain_allowlist_enforced": self.settings.enforce_domain_allowlist,
+                "allowed_domains": [
+                    item.strip()
+                    for item in self.settings.browser_allowed_domains.split(",")
+                    if item.strip()
+                ],
+                "recovery_budgets": {
+                    "max_repeated_strategy": self.settings.max_repeated_strategy,
+                    "max_unknown_outcomes": self.settings.max_unknown_outcomes,
+                    "max_locator_recoveries": self.settings.max_locator_recoveries,
+                    "max_coordinate_fallbacks": self.settings.max_coordinate_fallbacks,
+                    "max_consecutive_no_change": self.settings.max_consecutive_no_change,
+                },
+            }
+        )
+        return summary
+
     def run(self, task: str, target_spec: str, *args, **kwargs) -> RunOutcome:
         if self.windows.desktop_locked():
             raise RuntimeError(
