@@ -6,7 +6,7 @@ from agent_os.tools_runtime import ToolExecutor as BaseToolExecutor
 
 
 class ToolExecutor(BaseToolExecutor):
-    """Add verified select and scroll behavior to the browser executor."""
+    """Add verified semantic select and measured scroll behavior."""
 
     @staticmethod
     def _is_select_control(element) -> bool:
@@ -18,9 +18,51 @@ class ToolExecutor(BaseToolExecutor):
             "listbox",
         }
 
+    def _select_result(self, decision, observation) -> ExecutionResult:
+        assert decision.element_id is not None
+        wrapper, element = self._element(observation, decision.element_id)
+        if not isinstance(wrapper, BrowserElementRef) or element is None:
+            return ExecutionResult(
+                ok=False,
+                summary=(
+                    f"Select target {decision.element_id} is unavailable in the captured map. "
+                    "Capture a fresh semantic page state and retry the same semantic field."
+                ),
+            )
+        if not self._is_select_control(element):
+            return ExecutionResult(
+                ok=False,
+                summary=(
+                    f"{element.name!r} is not a select or combobox. "
+                    "Use fill_element for text fields or click_element for buttons."
+                ),
+                details={"element_id": decision.element_id},
+            )
+        requested = decision.option if decision.action == "select_option" else decision.text
+        assert requested is not None
+        summary, state = self.browser.select_option_state(
+            wrapper,
+            element,
+            requested,
+        )
+        return ExecutionResult(
+            ok=True,
+            summary=summary,
+            details={
+                "input": "browser-semantic-select",
+                "element_id": decision.element_id,
+                "requested_option": requested,
+                **state,
+            },
+        )
+
     def _browser_execute(self, decision, observation, lease, artifact_dir):
         action = decision.action
 
+        if action == "select_option":
+            return self._select_result(decision, observation)
+
+        # Backward compatibility for models that still use fill_element on a select.
         if action == "fill_element" and decision.element_id:
             wrapper, element = self._element(observation, decision.element_id)
             if (
@@ -28,21 +70,7 @@ class ToolExecutor(BaseToolExecutor):
                 and element is not None
                 and self._is_select_control(element)
             ):
-                assert decision.text is not None
-                summary, state = self.browser.select_option_state(
-                    wrapper,
-                    element,
-                    decision.text,
-                )
-                return ExecutionResult(
-                    ok=True,
-                    summary=summary,
-                    details={
-                        "input": "browser-select",
-                        "coordinates": "css-pixels",
-                        **state,
-                    },
-                )
+                return self._select_result(decision, observation)
 
         if action == "scroll":
             assert decision.amount is not None
@@ -54,8 +82,9 @@ class ToolExecutor(BaseToolExecutor):
                     return ExecutionResult(
                         ok=False,
                         summary=(
-                            f"Scroll target {decision.element_id} is stale or unavailable. "
-                            "Capture the page again and choose a visible container."
+                            f"Scroll target {decision.element_id} is unavailable. "
+                            "Use the current semantic page map to select a visible scroll container, "
+                            "or omit element_id to scroll the best current container."
                         ),
                     )
             summary, state = self.browser.scroll_state(
@@ -76,7 +105,7 @@ class ToolExecutor(BaseToolExecutor):
                     summary=(
                         f"No scrolling occurred; the target is already at {boundary}. "
                         "Do not repeat the same scroll. Choose another scroll container, "
-                        "reverse direction, or continue with a visible element."
+                        "reverse direction, or continue with a visible semantic element."
                     ),
                     details={"input": "browser-wheel", **state},
                 )
@@ -95,9 +124,8 @@ class ToolExecutor(BaseToolExecutor):
                     return ExecutionResult(
                         ok=False,
                         summary=(
-                            f"{element.name!r} is a native select. Use fill_element on "
-                            "this same element with the exact option label; clicking a native "
-                            "select does not give the model a reliable option inventory."
+                            f"{element.name!r} is a native select. Use select_option on this "
+                            "same semantic element with an exact available option label."
                         ),
                         details={
                             "input": "browser-select-guidance",
@@ -110,8 +138,8 @@ class ToolExecutor(BaseToolExecutor):
                             ok=False,
                             summary=(
                                 f"Combobox {element.name!r} is already open. Do not click it "
-                                "again. Choose a visible option, scroll its listbox, or use "
-                                "fill_element with the exact option label."
+                                "again. Use select_option with an exact visible option, or scroll "
+                                "the listbox when the desired option is below the viewport."
                             ),
                             details={
                                 "input": "browser-select-guidance",
