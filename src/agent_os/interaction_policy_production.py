@@ -56,13 +56,10 @@ class InteractionPolicy(BaseInteractionPolicy):
         )
         if assessment.mode == ConfirmationMode.ALLOW:
             return None
+        # Hard denies are returned by the executor as deterministic failures. Asking the
+        # user here would incorrectly imply that a confirmation can override the deny.
         if assessment.mode == ConfirmationMode.DENY:
-            return UserIntervention(
-                f"Blocked by Windows Agent policy: {assessment.reason}",
-                sensitive=assessment.sensitive,
-                guidance_label=f"Blocked risk {assessment.risk_code}",
-                mode="manual",
-            )
+            return None
         if assessment.mode == ConfirmationMode.HANDOFF:
             return UserIntervention(
                 assessment.user_question or assessment.reason,
