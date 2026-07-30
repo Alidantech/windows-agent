@@ -6,6 +6,8 @@ from typing import Any
 from agent_os.browser import BrowserElementRef
 from agent_os.browser_semantic import (
     BrowserController as BaseBrowserController,
+)
+from agent_os.browser_semantic import (
     SemanticBrowserElementRef,
 )
 
