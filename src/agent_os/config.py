@@ -58,6 +58,12 @@ class Settings(BaseSettings):
     api_retry_base_seconds: float = Field(default=1.5, ge=0.1, le=20.0)
     api_timeout_ms: int = Field(default=30000, ge=3000, le=180000)
 
+    max_repeated_strategy: int = Field(default=2, ge=1, le=8)
+    max_unknown_outcomes: int = Field(default=1, ge=0, le=5)
+    max_locator_recoveries: int = Field(default=2, ge=0, le=10)
+    max_coordinate_fallbacks: int = Field(default=3, ge=0, le=20)
+    max_consecutive_no_change: int = Field(default=2, ge=1, le=10)
+
     save_screenshots: bool = True
     screenshot_max_width: int = Field(default=1600, ge=640, le=3840)
     screenshot_max_height: int = Field(default=1200, ge=480, le=2160)
@@ -73,6 +79,9 @@ class Settings(BaseSettings):
     verify_done: bool = True
     allow_unlisted_apps: bool = False
     max_typed_chars: int = Field(default=3000, ge=1, le=20000)
+    prompt_injection_policy: Literal["block_transmission", "confirm", "off"] = (
+        "block_transmission"
+    )
 
     control_mode: Literal["auto", "browser", "desktop"] = "auto"
     browser_backend: Literal["isolated", "system"] = "isolated"
@@ -82,6 +91,8 @@ class Settings(BaseSettings):
     browser_scroll_pixels: int = Field(default=440, ge=80, le=2000)
     browser_smoke_max_links: int = Field(default=60, ge=1, le=250)
     browser_smoke_visual_delay_ms: int = Field(default=350, ge=0, le=5000)
+    browser_allowed_domains: str = ""
+    enforce_domain_allowlist: bool = False
 
     conflict_policy: Literal["cooperative", "exclusive"] = "cooperative"
     physical_input_policy: Literal["deny", "ask", "allow"] = "deny"
