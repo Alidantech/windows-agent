@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "windows-agent"
-version = "0.6.1"
+version = "0.6.2"
 description = "Persistent provider-pluggable Windows automation with monitor leases, isolated browser input, safe overlays, model fallback, and structured evidence."
 readme = "README.md"
 requires-python = ">=3.11,<3.14"
