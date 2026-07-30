@@ -52,7 +52,7 @@ Every browser observation now records:
 
 - whether a control is editable, required, read-only or disabled;
 - whether it currently has a value;
-- value length and a non-password preview;
+- value length, without echoing the value into structured model metadata;
 - validity and validation message;
 - form identity;
 - whether the control submits the form;
