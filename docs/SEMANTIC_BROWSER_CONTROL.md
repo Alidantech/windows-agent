@@ -7,8 +7,9 @@ not choose a screen point when the page exposes a usable DOM or accessibility ta
 ## Production control order
 
 1. Purpose-built API or connector when the operation is not inherently visual.
-2. Playwright semantic locator using role, accessible name, label, stable ID/name,
-   placeholder, form context, and actionability checks.
+2. Playwright semantic locator using stable ID/name, current captured selector,
+   associated label, ARIA role plus accessible name, exact text, placeholder, and
+   Playwright actionability checks.
 3. Accessibility/ARIA page snapshot for page hierarchy and state.
 4. Full-document semantic map for content above, visible in, and below the viewport.
 5. Current high-resolution screenshot and Set-of-Mark labels for visual context.
@@ -35,14 +36,15 @@ ranked locator cascade:
 
 1. stable `id`;
 2. stable `name`;
-3. associated label;
-4. ARIA role plus exact accessible name;
-5. exact visible text for button/link/option-like controls;
-6. placeholder;
-7. the captured selector as a final compatibility fallback.
+3. the captured selector while its original node still exists;
+4. associated label;
+5. ARIA role plus exact accessible name;
+6. exact visible text for button/link/option-like controls;
+7. placeholder.
 
-If React destroys and recreates a dropdown option, the current role/name match is used.
-A stale captured selector is therefore not automatically a failed task.
+If React destroys and recreates a dropdown option, the captured selector becomes empty
+and the current role/name match is used. A stale injected attribute is therefore not
+automatically a failed task.
 
 ## Typed actions
 
@@ -74,6 +76,10 @@ Every browser observation includes:
 - required, enabled, expanded, checked, selected, and value-presence state;
 - visible nested scroll containers with their own position, maximum, and depth percent;
 - form validity, missing required fields, validation messages, and visible alerts.
+
+The prompt builder programmatically ranks and limits full-page candidates. Visible,
+required, expanded, task-relevant, and nearby controls are retained first so the model
+gains page-wide awareness without receiving an unbounded DOM dump.
 
 A click-through scroll HUD is rendered inside the controlled page. It shows the current
 scroll target and depth without controlling the action itself.
