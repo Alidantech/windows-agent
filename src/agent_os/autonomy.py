@@ -41,6 +41,14 @@ _PROTECTED = re.compile(
 )
 _GRANT_MARKER = "WINDOWS_AGENT_AUTONOMY_GRANT"
 _GRANT_VALUE = re.compile(r"^-\s+([^:\n]+):\s*(.+?)\s*$", re.MULTILINE)
+_CANONICAL_DEFAULT_KEYS = {
+    "event title": "event title",
+    "short name": "short name",
+    "event url slug": "event URL slug",
+    "start date and time": "start date and time",
+    "end date and time": "end date and time",
+    "max capacity": "max capacity",
+}
 
 
 @dataclass(frozen=True)
@@ -114,15 +122,9 @@ def _stored_defaults(corpus: str) -> dict[str, str]:
     values: dict[str, str] = {}
     for key, value in _GRANT_VALUE.findall(corpus):
         normalized = " ".join(key.strip().casefold().split())
-        if normalized in {
-            "event title",
-            "short name",
-            "event url slug",
-            "start date and time",
-            "end date and time",
-            "max capacity",
-        }:
-            values[normalized] = value.strip()
+        canonical = _CANONICAL_DEFAULT_KEYS.get(normalized)
+        if canonical:
+            values[canonical] = value.strip()
     return values
 
 
