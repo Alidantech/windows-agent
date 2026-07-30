@@ -1,10 +1,12 @@
 from __future__ import annotations
 
-from datetime import datetime
-from zoneinfo import ZoneInfo
+from datetime import datetime, timedelta, timezone
 
 from agent_os.autonomy import autonomy_grant, expand_user_answer, question_can_use_grant
 from agent_os.intent import IntentRouter
+
+
+EAT = timezone(timedelta(hours=3), name="EAT")
 
 
 def test_typo_create_event_continues_active_browser() -> None:
@@ -20,7 +22,7 @@ def test_use_browser_continues_active_browser() -> None:
 
 
 def test_demo_event_creates_reversible_defaults() -> None:
-    now = datetime(2026, 7, 30, 13, 48, tzinfo=ZoneInfo("Africa/Nairobi"))
+    now = datetime(2026, 7, 30, 13, 48, tzinfo=EAT)
     grant = autonomy_grant("help me create a demo event", now=now)
     assert grant.active is True
     assert grant.defaults["event title"] == "Windows Agent Demo Event"
@@ -30,7 +32,7 @@ def test_demo_event_creates_reversible_defaults() -> None:
 
 
 def test_demo_answer_expands_into_stable_plan() -> None:
-    now = datetime(2026, 7, 30, 13, 48, tzinfo=ZoneInfo("Africa/Nairobi"))
+    now = datetime(2026, 7, 30, 13, 48, tzinfo=EAT)
     expanded = expand_user_answer(
         "just fill yourself",
         "Please provide the event title, slug, category, timezone and dates.",
