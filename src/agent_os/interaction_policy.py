@@ -4,7 +4,6 @@ import re
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Literal
 
-from agent_os.autonomy import allows_demo_inference
 from agent_os.local_values import LOCAL_VALUE_TOKEN, local_value_vault
 from agent_os.models import AgentDecision, UIElement
 
@@ -24,7 +23,7 @@ class UserIntervention:
 
 
 class InteractionPolicy:
-    """Require explicit user input only for protected values and consequential actions."""
+    """Interrupt only for protected data, human verification, and explicit consent."""
 
     _PASSWORD = re.compile(
         r"\b(?:password|passcode|security\s+answer|secret\s+answer|pin)\b",
@@ -115,7 +114,6 @@ class InteractionPolicy:
         element = self._element(observation, decision.element_id)
         element_name = self._element_label(element)
         corpus = "\n".join([task, *guidance])
-        demo_inference_allowed = allows_demo_inference(task, guidance)
 
         if self._HUMAN_CHECK.search(element_name):
             return UserIntervention(
@@ -165,21 +163,6 @@ class InteractionPolicy:
                         guidance_label=f"{friendly_name.title()} supplied by user",
                         mode="replace_text",
                     )
-            if (
-                element is not None
-                and element.editable
-                and element.required
-                and not element.has_value
-                and not demo_inference_allowed
-                and not self._value_was_supplied(decision.text, corpus)
-            ):
-                clean_label = (element.name or element.placeholder or "required field").strip()
-                return UserIntervention(
-                    f"What value should I enter for required field '{clean_label}'?",
-                    sensitive=False,
-                    guidance_label=f"Value for {clean_label} supplied by user",
-                    mode="replace_text",
-                )
 
         if decision.action == "click_element" and element is not None:
             if self._CONSENT.search(element_name) and not self._EXPLICIT_CONSENT.search(
