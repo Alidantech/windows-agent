@@ -10,6 +10,7 @@ from agent_os.models import AgentDecision, UIElement
 if TYPE_CHECKING:
     from agent_os.capture import CapturedObservation
 
+
 InterventionMode = Literal["replace_text", "confirm_action", "manual"]
 
 
@@ -22,7 +23,7 @@ class UserIntervention:
 
 
 class InteractionPolicy:
-    """Require explicit user input for identity, credentials, and consent."""
+    """Require explicit user input for authored values, credentials, and consent."""
 
     _PASSWORD = re.compile(
         r"\b(?:password|passcode|security\s+answer|secret\s+answer|pin)\b",
@@ -43,11 +44,11 @@ class InteractionPolicy:
         (re.compile(r"\blast\s+name\b", re.I), "last name"),
         (re.compile(r"\bfull\s+name\b|\byour\s+name\b", re.I), "full name"),
         (re.compile(r"\be-?mail(?:\s+address)?\b", re.I), "email address"),
-        (re.compile(r"\bphone|mobile|telephone\b", re.I), "phone number"),
+        (re.compile(r"\b(?:phone|mobile|telephone)\b", re.I), "phone number"),
         (re.compile(r"\b(?:address|street|city|postal|zip)\b", re.I), "address"),
-        (re.compile(r"\bcompany|organisation|organization\b", re.I), "company name"),
-        (re.compile(r"\buser\s*name|username\b", re.I), "username"),
-        (re.compile(r"\bdate\s+of\s+birth|birthday\b", re.I), "date of birth"),
+        (re.compile(r"\b(?:company|organisation|organization)\b", re.I), "company name"),
+        (re.compile(r"\b(?:user\s*name|username)\b", re.I), "username"),
+        (re.compile(r"\b(?:date\s+of\s+birth|birthday)\b", re.I), "date of birth"),
     )
     _CONSENT = re.compile(
         r"\b(?:terms(?:\s+and\s+conditions)?|privacy\s+policy|legal\s+agreement|"
@@ -78,8 +79,6 @@ class InteractionPolicy:
 
     @staticmethod
     def _element_label(element: UIElement | None) -> str:
-        """Use accessible labels first; automation IDs must not contaminate semantics."""
-
         if element is None:
             return ""
         accessible = " ".join(
@@ -164,6 +163,20 @@ class InteractionPolicy:
                         guidance_label=f"{friendly_name.title()} supplied by user",
                         mode="replace_text",
                     )
+            if (
+                element is not None
+                and element.editable
+                and element.required
+                and not element.has_value
+                and not self._value_was_supplied(decision.text, corpus)
+            ):
+                clean_label = (element.name or element.placeholder or "required field").strip()
+                return UserIntervention(
+                    f"What value should I enter for required field '{clean_label}'?",
+                    sensitive=True,
+                    guidance_label=f"Value for {clean_label} supplied by user",
+                    mode="replace_text",
+                )
 
         if decision.action == "click_element" and element is not None:
             if self._CONSENT.search(element_name) and not self._EXPLICIT_CONSENT.search(
@@ -182,7 +195,7 @@ def question_is_sensitive(question: str) -> bool:
     return bool(
         re.search(
             r"\b(?:password|passcode|pin|otp|verification\s+code|security\s+code|"
-            r"authentication\s+code|2fa|mfa|api\s+key|secret)\b",
+            r"authentication\s+code|2fa|mfa|api\s+key|secret|required\s+field)\b",
             question,
             re.I,
         )
