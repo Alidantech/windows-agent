@@ -146,6 +146,14 @@ class UIElement(BaseModel):
     selected: bool | None = None
     focused: bool = False
     receives_events: bool | None = None
+    has_value: bool | None = None
+    value_length: int | None = None
+    value_preview: str | None = None
+    valid: bool | None = None
+    validation_message: str | None = None
+    form_id: str | None = None
+    is_submit: bool = False
+    aria_expanded: bool | None = None
 
 
 class ExecutionResult(BaseModel):
