@@ -54,6 +54,13 @@ target-version = "py311"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "B", "UP", "SIM"]
+ignore = [
+  # Embedded JavaScript and HTML are kept readable in their native structure.
+  "E501",
+  # Explicit nested guards and cleanup blocks are clearer in UI/process teardown paths.
+  "SIM102",
+  "SIM105",
+]
 
 [tool.uv]
 required-version = ">=0.10.0"
