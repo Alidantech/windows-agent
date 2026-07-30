@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.6.5
+
+- Added bounded autonomy grants for demo, sample, test, mock, and delegated-default workflows.
+- Added deterministic future demo-event defaults for title, short name, unique slug, dates, capacity, category preference, timezone preference, seating, and online mode.
+- Demo authorization now persists for the active task so the agent cannot repeatedly ask for the same reversible non-personal fields.
+- Human interruption is now risk-based: identity, credentials, consent, payment, verification, publishing, sending, deletion, and other consequential actions remain protected.
+- Added typo-tolerant persistent-browser routing so `creaye an event` continues the active browser.
+- Added continuation handling for `use the browser`, `do it`, `handle it`, and similar follow-ups.
+- Added current local datetime and explicit autonomy state to every planner step.
+- Removed the incorrect assumption that every required form field is sensitive.
+
 ## 0.6.4
 
 - Added multiline paste support to the persistent console.
