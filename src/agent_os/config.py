@@ -13,16 +13,16 @@ from agent_os.secrets import secret_store
 ProviderName = Literal["auto", "gemini", "openai", "mistral"]
 
 DEFAULT_MODELS: dict[str, str] = {
-    "gemini": "gemini-3.5-flash-lite",
+    "gemini": "gemini-3.6-flash",
     "openai": "gpt-5-mini",
     "mistral": "mistral-small-2603",
 }
 
 DEFAULT_AUTO_MODELS: tuple[str, ...] = (
-    "gemini:gemini-3.5-flash-lite",
     "gemini:gemini-3.6-flash",
-    "gemini:gemini-3.1-flash-lite",
+    "gemini:gemini-3.5-flash",
     "openai:gpt-5-mini",
+    "gemini:gemini-3.5-flash-lite",
     "mistral:mistral-small-2603",
 )
 
