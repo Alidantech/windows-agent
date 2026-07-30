@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+from urllib.parse import urlparse
+
 from agent_os.capture_production import ScreenCapture
 from agent_os.interaction_policy_production import InteractionPolicy
 from agent_os.runtime_v11 import DesktopAgent as BaseDesktopAgent
 from agent_os.runtime_v11 import RunOutcome
+from agent_os.task_contract import TaskContract
 from agent_os.tools_production_v2 import ToolExecutor
 from agent_os.windows_production import WindowManager
 
@@ -58,11 +61,41 @@ class DesktopAgent(BaseDesktopAgent):
         )
         return summary
 
+    @staticmethod
+    def _hostname(url: str) -> str:
+        normalized = url if "://" in url else f"https://{url}"
+        return (urlparse(normalized).hostname or "").casefold()
+
+    def _preflight_navigation(self, url: str) -> None:
+        hostname = self._hostname(url)
+        if any(
+            term in hostname
+            for term in self.executor._DENIED_BROWSER_HOST_TERMS
+        ):
+            raise RuntimeError(
+                f"Automation of password-manager site {hostname!r} is disabled."
+            )
+        if not self.settings.enforce_domain_allowlist:
+            return
+        allowed = self.executor._allowed_domains()
+        if not allowed:
+            raise RuntimeError(
+                "Domain allowlist enforcement is enabled, but no allowed domains are configured."
+            )
+        if not any(self.executor._matches_domain(hostname, item) for item in allowed):
+            raise RuntimeError(
+                f"Domain {hostname!r} is not in the Windows Agent allowlist: "
+                f"{', '.join(allowed)}."
+            )
+
     def run(self, task: str, target_spec: str, *args, **kwargs) -> RunOutcome:
         if self.windows.desktop_locked():
             raise RuntimeError(
                 "The Windows desktop is locked. Unlock it before starting Windows Agent."
             )
+        contract = TaskContract.from_task(task)
+        if contract.navigation_only and contract.requested_url:
+            self._preflight_navigation(contract.requested_url)
         self.interactions.reset()
         self.executor.configure_run(task)
         return super().run(task, target_spec, *args, **kwargs)
