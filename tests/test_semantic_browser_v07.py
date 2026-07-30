@@ -199,4 +199,4 @@ def test_personal_semantic_select_remains_protected() -> None:
 
 
 def test_active_agent_uses_semantic_runtime() -> None:
-    assert DesktopAgent.__module__ == "agent_os.runtime_v11"
+    assert DesktopAgent.__module__ == "agent_os.runtime_v12"
