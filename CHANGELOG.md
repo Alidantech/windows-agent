@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.6.6
+
+- Made direct requests to complete, fill, finish, or follow a reversible form/setup workflow an autonomy grant by default.
+- Removed the blanket executor veto that asked for every required non-personal field whose exact value was absent from the user message.
+- Ordinary fields such as event URLs, titles, categories, timezones, dates, capacities, seating choices, toggles, and other reversible configuration values are now selected autonomously.
+- Kept explicit user intervention for personal identity, credentials, CAPTCHA/OTP, legal consent, payment, publishing, sending, deletion, and other consequential actions.
+- Expanded delegation recognition to phrases such as `choose fields and values yourself` and `fill all details yourself`.
+- Preserved one stable generated form plan across all steps, including the original timestamped slug.
+- Added regression coverage for the exact event-creation workflow and delegation phrases reported from the Windows console.
+
 ## 0.6.5
 
 - Added bounded autonomy grants for demo, sample, test, mock, and delegated-default workflows.
