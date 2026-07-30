@@ -41,9 +41,9 @@ def test_browser_controller_measures_scroll_movement() -> None:
 
 def test_planner_prompt_documents_select_and_scroll_contract() -> None:
     prompt = Path("prompts/system.md").read_text(encoding="utf-8")
-    assert "use `fill_element` on the select or combobox" in prompt
-    assert "positive to scroll down and negative to scroll up" in prompt
-    assert "Never repeatedly click an already-open combobox" in prompt
+    assert "Use `select_option` with the owning combobox/select" in prompt
+    assert "Positive `amount` scrolls down; negative scrolls up" in prompt
+    assert "Open a custom combobox at most once" in prompt
     assert "test system cursor access" in prompt
 
 
