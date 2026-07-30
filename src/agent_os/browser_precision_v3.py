@@ -23,7 +23,6 @@ class BrowserController(BaseBrowserController):
                 const tag = el.tagName.toLowerCase();
                 const type = tag === 'input' ? (el.type || 'text').toLowerCase() :
                   (tag === 'button' ? (el.type || 'submit').toLowerCase() : null);
-                const isPassword = type === 'password';
                 const rawValue = ('value' in el && typeof el.value === 'string') ? el.value :
                   (el.isContentEditable ? (el.innerText || '') : '');
                 const form = el.form || el.closest('form');
@@ -41,7 +40,7 @@ class BrowserController(BaseBrowserController):
                 output[id] = {
                   hasValue: Boolean(rawValue),
                   valueLength: rawValue.length,
-                  valuePreview: isPassword ? null : rawValue.slice(0, 120),
+                  valuePreview: null,
                   valid,
                   validationMessage,
                   formId: form ? (form.id || form.getAttribute('name') || 'form') : null,
