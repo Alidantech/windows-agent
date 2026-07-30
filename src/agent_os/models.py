@@ -5,18 +5,51 @@ from typing import Literal
 from pydantic import BaseModel, Field, model_validator
 
 ActionName = Literal[
-    "click", "double_click", "right_click", "click_element", "fill_element",
-    "select_option", "move", "type_text", "press_key", "hotkey", "scroll",
-    "launch_app", "open_url", "activate_window", "smoke_test_site", "wait",
-    "ask_user", "done", "fail",
+    "click",
+    "double_click",
+    "right_click",
+    "click_element",
+    "fill_element",
+    "select_option",
+    "move",
+    "type_text",
+    "press_key",
+    "hotkey",
+    "scroll",
+    "inspect_region",
+    "launch_app",
+    "open_url",
+    "activate_window",
+    "smoke_test_site",
+    "wait",
+    "ask_user",
+    "done",
+    "fail",
 ]
+
+ExecutionStatus = Literal["verified_success", "verified_failure", "unknown_outcome"]
 
 
 class AgentDecision(BaseModel):
     action: ActionName = Field(description="Exactly one supported action.")
     reason: str = Field(min_length=1, max_length=500)
+    observation_id: str | None = Field(
+        default=None,
+        max_length=100,
+        description=(
+            "The current observation_id from task context. It binds indexes, focus, and "
+            "coordinates to exactly one point-in-time observation."
+        ),
+    )
+    expected_change: str | None = Field(
+        default=None,
+        max_length=500,
+        description="Concrete state change expected after the action.",
+    )
     x: int | None = Field(default=None, ge=0, le=1000)
     y: int | None = Field(default=None, ge=0, le=1000)
+    x2: int | None = Field(default=None, ge=0, le=1000)
+    y2: int | None = Field(default=None, ge=0, le=1000)
     element_id: str | None = None
     text: str | None = Field(default=None, max_length=4000)
     option: str | None = Field(default=None, max_length=1000)
@@ -37,6 +70,13 @@ class AgentDecision(BaseModel):
             self.x is None or self.y is None
         ):
             raise ValueError(f"{self.action} requires x and y")
+        if self.action == "inspect_region":
+            if None in {self.x, self.y, self.x2, self.y2}:
+                raise ValueError("inspect_region requires x, y, x2, and y2")
+            assert self.x is not None and self.y is not None
+            assert self.x2 is not None and self.y2 is not None
+            if self.x2 <= self.x or self.y2 <= self.y:
+                raise ValueError("inspect_region requires x2 > x and y2 > y")
         if self.action in {"click_element", "fill_element", "select_option"} and not self.element_id:
             raise ValueError(f"{self.action} requires element_id")
         if self.action in {"fill_element", "type_text"} and self.text is None:
@@ -60,12 +100,26 @@ class AgentDecision(BaseModel):
         return self
 
     def signature(self) -> str:
-        return "|".join([
-            self.action, str(self.x), str(self.y), str(self.element_id), str(self.text),
-            str(self.option), str(self.key), ",".join(self.keys or []), str(self.amount),
-            str(self.app), str(self.url), str(self.browser), str(self.window),
-            str(self.max_links),
-        ])
+        return "|".join(
+            [
+                self.action,
+                str(self.x),
+                str(self.y),
+                str(self.x2),
+                str(self.y2),
+                str(self.element_id),
+                str(self.text),
+                str(self.option),
+                str(self.key),
+                ",".join(self.keys or []),
+                str(self.amount),
+                str(self.app),
+                str(self.url),
+                str(self.browser),
+                str(self.window),
+                str(self.max_links),
+            ]
+        )
 
 
 class TaskVerification(BaseModel):
@@ -163,6 +217,15 @@ class UIElement(BaseModel):
 class ExecutionResult(BaseModel):
     ok: bool
     summary: str
+    status: ExecutionStatus | None = None
     details: dict[str, object] = Field(default_factory=dict)
     task_complete: bool = False
     completion_evidence: str | None = None
+
+    @model_validator(mode="after")
+    def default_status(self) -> ExecutionResult:
+        if self.status is None:
+            self.status = "verified_success" if self.ok else "verified_failure"
+        if self.status == "unknown_outcome":
+            self.ok = False
+        return self
