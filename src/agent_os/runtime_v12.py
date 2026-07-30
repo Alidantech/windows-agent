@@ -4,7 +4,7 @@ from agent_os.capture_production import ScreenCapture
 from agent_os.interaction_policy_production import InteractionPolicy
 from agent_os.runtime_v11 import DesktopAgent as BaseDesktopAgent
 from agent_os.runtime_v11 import RunOutcome
-from agent_os.tools_production import ToolExecutor
+from agent_os.tools_production_v2 import ToolExecutor
 from agent_os.windows_production import WindowManager
 
 
