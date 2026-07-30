@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.6.3
+
+- Added verified native-select handling through Playwright `locator.select_option()`.
+- Added custom ARIA combobox opening, visible option discovery, option scrolling, selection, and selected-state verification.
+- Added targeted scrolling for listboxes, dialogs, sidebars, nested containers, and the document.
+- Added measured Playwright wheel scrolling with a DOM fallback only when wheel movement is zero.
+- Added boundary reporting so the planner cannot repeatedly scroll at the top or bottom.
+- Added planner rules that prevent repeated combobox clicks and arbitrary form changes during vague cursor tests.
+
 ## 0.6.2
 
 - Replaced the Tk-based virtual cursor window with an in-page Playwright `👆🏻` cursor rendered through `page.evaluate()` and isolated shadow DOM.
