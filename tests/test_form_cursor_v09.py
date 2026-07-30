@@ -49,22 +49,38 @@ def test_non_computer_create_request_stays_conversation():
     assert IntentRouter().route("create a poem").kind == "conversation"
 
 
-def test_required_authored_value_prompts_without_masking():
+def test_required_non_personal_value_is_autonomous():
     decision = AgentDecision(
         action="fill_element",
         element_id="B0001",
-        text="Placeholder Event",
-        reason="fill title",
+        text="Windows Agent Demo Event",
+        reason="choose a coherent reversible event title",
     )
     intervention = InteractionPolicy().required_intervention(
         decision,
         observation(element()),
-        task="create an event",
+        task="complete filling the create event form and follow the setup",
+        guidance=[],
+    )
+    assert intervention is None
+
+
+def test_missing_personal_value_still_requires_user():
+    decision = AgentDecision(
+        action="fill_element",
+        element_id="B0002",
+        text="Demo User",
+        reason="fill account owner name",
+    )
+    intervention = InteractionPolicy().required_intervention(
+        decision,
+        observation(element(element_id="B0002", name="Full name *")),
+        task="complete the form",
         guidance=[],
     )
     assert intervention is not None
-    assert intervention.sensitive is False
-    assert "Event title" in intervention.question
+    assert intervention.sensitive is True
+    assert "full name" in intervention.question.lower()
 
 
 def test_explicit_required_value_is_allowed():
