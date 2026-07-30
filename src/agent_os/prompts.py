@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime
 from pathlib import Path
 
 from agent_os.apps import AppLauncher
+from agent_os.autonomy import autonomy_grant
 from agent_os.capture import CapturedObservation
 from agent_os.lease import TargetLease
 from agent_os.models import ExecutionResult, WindowInfo
@@ -63,8 +65,10 @@ class PromptBuilder:
         session_context: list[dict[str, object]] | None = None,
     ) -> str:
         contract = TaskContract.from_task(task)
+        grant = autonomy_grant(task, user_guidance)
         context = {
             "task": task,
+            "current_local_datetime": datetime.now().astimezone().isoformat(timespec="seconds"),
             "task_contract": {
                 "requested_url": contract.requested_url,
                 "navigation_only": contract.navigation_only,
@@ -74,6 +78,7 @@ class PromptBuilder:
                     "visible, return done immediately."
                 ),
             },
+            "autonomy": grant.as_prompt_context(),
             "step": step,
             "control_lease": lease.as_dict(),
             "settings": settings_summary,
