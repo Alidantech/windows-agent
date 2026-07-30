@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import sys
 
-from agent_os.shell import COMMANDS, WindowsAgentShell as BaseWindowsAgentShell
+from agent_os.shell import COMMANDS
+from agent_os.shell import WindowsAgentShell as BaseWindowsAgentShell
 from agent_os.terminal_ui import ui
 
 COMMANDS["/set"] = "Change target, control mode, physical input, cursor or overlay"

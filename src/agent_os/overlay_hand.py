@@ -62,6 +62,7 @@ def _hand_rgba(size: int, accent: str, pulse: int = 0):
 def _process_main(rect_data: dict[str, int], label: str, events: Any) -> None:
     _set_per_monitor_dpi_awareness()
     import tkinter as tk
+
     from PIL import ImageTk
 
     rect = Rectangle(**rect_data)

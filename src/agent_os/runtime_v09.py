@@ -5,7 +5,8 @@ import platform
 from agent_os.browser_precision_v3 import BrowserController
 from agent_os.overlay import NullOverlay
 from agent_os.overlay_hand import HandOverlay
-from agent_os.runtime_v08 import DesktopAgent as BaseDesktopAgent, RunOutcome
+from agent_os.runtime_v08 import DesktopAgent as BaseDesktopAgent
+from agent_os.runtime_v08 import RunOutcome
 
 
 class DesktopAgent(BaseDesktopAgent):
