@@ -6,9 +6,9 @@ Windows Agent separates browser input from cursor presentation.
 
 - `prompt_toolkit`: persistent editable terminal prompt, history, completion and background output safety.
 - `Rich`: panels, tables, status indicators and the action/result feed.
-- `Playwright`: semantic browser locators, CSS-pixel virtual mouse, keyboard, scrolling and form input.
-- `Pillow`: Set-of-Mark model images and the transparent hand cursor artwork.
-- `Tkinter` plus `pywin32`: click-through focus-edge and virtual-cursor windows.
+- `Playwright`: semantic browser locators, CSS-pixel virtual mouse, keyboard, scrolling, form input and in-page cursor rendering.
+- `Pillow`: Set-of-Mark model images.
+- `Tkinter` plus `pywin32`: click-through monitor-edge focus windows only.
 - Win32 `SetCursorPos`: optional control of the one shared Windows cursor.
 - `pywinauto`: native Windows UI Automation.
 - `PyAutoGUI`: last-resort physical desktop input when policy allows it.
@@ -25,9 +25,18 @@ Use one of these inside the persistent console:
 
 ### Virtual
 
-`virtual` is the default. Playwright controls an independent browser mouse while Windows Agent renders a transparent pointing-hand overlay. The user's physical Windows cursor remains available.
+`virtual` is the default for isolated-browser work. Playwright controls an independent browser mouse while Windows Agent inserts a `👆🏻` element into the controlled page through `page.evaluate()`.
 
-The virtual cursor is generated as an RGBA hand image by Pillow. The cursor window uses Windows color-key transparency without global window alpha; this avoids the dark square produced by combining Tk transparency modes.
+The cursor:
+
+- lives inside the browser viewport rather than a Windows/Tk window;
+- uses an isolated shadow DOM so site CSS cannot turn it into a rectangle;
+- has `pointer-events: none`, so it cannot block the element being clicked;
+- animates between CSS-pixel targets;
+- shows a short green click pulse;
+- is hidden while screenshots are captured for model grounding and evidence.
+
+The Windows focus overlay is now edge-only. It never creates a cursor-shaped window. This removes the black-square failure mode from the active runtime.
 
 ### System
 
@@ -78,8 +87,9 @@ A truly independent second physical pointer requires another Windows session, vi
 
 ## Official references
 
-- https://learn.microsoft.com/windows/win32/api/winuser/nf-winuser-setcursorpos
-- https://learn.microsoft.com/windows/win32/api/winuser/nf-winuser-sendinput
-- https://playwright.dev/python/docs/actionability
-- https://playwright.dev/python/docs/input
-- https://playwright.dev/python/docs/api/class-locator
+- Microsoft Win32 `SetCursorPos`
+- Microsoft Win32 `SendInput`
+- Playwright actionability
+- Playwright input
+- Playwright locator API
+- Playwright JavaScript evaluation
