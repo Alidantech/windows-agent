@@ -6,9 +6,9 @@ from pydantic import BaseModel, Field, model_validator
 
 ActionName = Literal[
     "click", "double_click", "right_click", "click_element", "fill_element",
-    "move", "type_text", "press_key", "hotkey", "scroll", "launch_app",
-    "open_url", "activate_window", "smoke_test_site", "wait", "ask_user",
-    "done", "fail",
+    "select_option", "move", "type_text", "press_key", "hotkey", "scroll",
+    "launch_app", "open_url", "activate_window", "smoke_test_site", "wait",
+    "ask_user", "done", "fail",
 ]
 
 
@@ -19,6 +19,7 @@ class AgentDecision(BaseModel):
     y: int | None = Field(default=None, ge=0, le=1000)
     element_id: str | None = None
     text: str | None = Field(default=None, max_length=4000)
+    option: str | None = Field(default=None, max_length=1000)
     key: str | None = Field(default=None, max_length=50)
     keys: list[str] | None = Field(default=None, max_length=8)
     amount: int | None = Field(default=None, ge=-20, le=20)
@@ -36,10 +37,12 @@ class AgentDecision(BaseModel):
             self.x is None or self.y is None
         ):
             raise ValueError(f"{self.action} requires x and y")
-        if self.action in {"click_element", "fill_element"} and not self.element_id:
+        if self.action in {"click_element", "fill_element", "select_option"} and not self.element_id:
             raise ValueError(f"{self.action} requires element_id")
         if self.action in {"fill_element", "type_text"} and self.text is None:
             raise ValueError(f"{self.action} requires text")
+        if self.action == "select_option" and not self.option:
+            raise ValueError("select_option requires option")
         if self.action == "press_key" and not self.key:
             raise ValueError("press_key requires key")
         if self.action == "hotkey" and not self.keys:
@@ -59,8 +62,9 @@ class AgentDecision(BaseModel):
     def signature(self) -> str:
         return "|".join([
             self.action, str(self.x), str(self.y), str(self.element_id), str(self.text),
-            str(self.key), ",".join(self.keys or []), str(self.amount), str(self.app),
-            str(self.url), str(self.browser), str(self.window), str(self.max_links),
+            str(self.option), str(self.key), ",".join(self.keys or []), str(self.amount),
+            str(self.app), str(self.url), str(self.browser), str(self.window),
+            str(self.max_links),
         ])
 
 
