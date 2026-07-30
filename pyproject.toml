@@ -38,7 +38,7 @@ dev = [
 ]
 
 [project.scripts]
-windows-agent = "agent_os.shell:main"
+windows-agent = "agent_os.shell_v2:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/agent_os"]
