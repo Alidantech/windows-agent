@@ -63,6 +63,7 @@ class Settings(BaseSettings):
     screenshot_max_height: int = Field(default=1200, ge=480, le=2160)
     include_cursor: bool = False
     strict_capture_alignment: bool = True
+    max_grounding_marks: int = Field(default=100, ge=10, le=250)
 
     use_uia: bool = True
     max_ui_elements: int = Field(default=140, ge=0, le=500)
@@ -78,6 +79,7 @@ class Settings(BaseSettings):
     browser_channel: str = "chrome"
     browser_profile_dir: Path = Path(".windows-agent/browser-profile")
     browser_timeout_ms: int = Field(default=20000, ge=1000, le=120000)
+    browser_scroll_pixels: int = Field(default=440, ge=80, le=2000)
     browser_smoke_max_links: int = Field(default=60, ge=1, le=250)
     browser_smoke_visual_delay_ms: int = Field(default=350, ge=0, le=5000)
 
