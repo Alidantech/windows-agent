@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from datetime import datetime
 from pathlib import Path
 
@@ -31,6 +32,94 @@ class PromptBuilder:
         if not skills:
             return "No additional task skills selected."
         return "\n\n".join(f"## Skill: {skill.name}\n{skill.body}" for skill in skills)
+
+    @staticmethod
+    def _task_terms(task: str) -> set[str]:
+        return {
+            token.casefold()
+            for token in re.findall(r"[A-Za-z0-9][A-Za-z0-9_-]{2,}", task)
+            if token.casefold() not in {
+                "the", "and", "for", "with", "from", "this", "that", "then",
+                "open", "using", "complete", "follow", "please", "yourself",
+            }
+        }
+
+    @classmethod
+    def _prompt_observation_state(
+        cls,
+        state: dict[str, object],
+        task: str,
+    ) -> dict[str, object]:
+        """Keep full-page structure while pruning low-value DOM candidates."""
+
+        output = dict(state)
+        semantic = output.get("semantic_page")
+        if isinstance(semantic, dict):
+            page = dict(semantic)
+            actionables = page.get("actionables")
+            if isinstance(actionables, list):
+                terms = cls._task_terms(task)
+                document = page.get("document") if isinstance(page.get("document"), dict) else {}
+                scroll_top = int(document.get("scrollTop") or 0)
+                viewport_height = max(1, int(document.get("viewportHeight") or 1))
+
+                def score(item: object) -> tuple[int, int]:
+                    if not isinstance(item, dict):
+                        return (-10000, 0)
+                    relation = str(item.get("relation") or "")
+                    name = str(item.get("name") or "").casefold()
+                    item_terms = set(re.findall(r"[a-z0-9][a-z0-9_-]{2,}", name))
+                    semantic_score = 0
+                    if relation == "visible":
+                        semantic_score += 120
+                    elif relation == "below":
+                        semantic_score += 35
+                    else:
+                        semantic_score += 20
+                    if item.get("required"):
+                        semantic_score += 70
+                    if item.get("expanded"):
+                        semantic_score += 60
+                    if item.get("enabled") is False:
+                        semantic_score -= 30
+                    if item.get("hasValue") is False:
+                        semantic_score += 15
+                    semantic_score += 45 * len(terms & item_terms)
+                    document_y = int(item.get("documentY") or 0)
+                    viewport_center = scroll_top + viewport_height // 2
+                    distance = abs(document_y - viewport_center)
+                    return (semantic_score, -distance)
+
+                ranked = sorted(actionables, key=score, reverse=True)
+                selected: list[object] = []
+                seen: set[tuple[object, ...]] = set()
+                for item in ranked:
+                    if not isinstance(item, dict):
+                        continue
+                    identity = (
+                        item.get("role"),
+                        item.get("name"),
+                        item.get("relation"),
+                        item.get("documentY"),
+                    )
+                    if identity in seen:
+                        continue
+                    seen.add(identity)
+                    selected.append(item)
+                    if len(selected) >= 120:
+                        break
+                page["actionables"] = selected
+                page["pruning"] = {
+                    "strategy": "visible/required/expanded/task-relevant/nearest",
+                    "original": len(actionables),
+                    "included": len(selected),
+                }
+            output["semantic_page"] = page
+
+        aria = output.get("aria_snapshot")
+        if isinstance(aria, str) and len(aria) > 12000:
+            output["aria_snapshot"] = aria[:12000] + "\n... ARIA snapshot pruned ..."
+        return output
 
     def build_chat_prompt(
         self,
@@ -66,6 +155,7 @@ class PromptBuilder:
     ) -> str:
         contract = TaskContract.from_task(task)
         grant = autonomy_grant(task, user_guidance)
+        prompt_state = self._prompt_observation_state(observation.state, task)
         context = {
             "task": task,
             "current_local_datetime": datetime.now().astimezone().isoformat(timespec="seconds"),
@@ -107,7 +197,7 @@ class PromptBuilder:
             "monitors": [item.model_dump() for item in observation.monitors],
             "visible_windows": [item.model_dump() for item in observation.windows],
             "ui_elements": [item.model_dump() for item in observation.uia.elements],
-            "observation_state": observation.state,
+            "observation_state": prompt_state,
             "available_app_aliases": self.app_launcher.available_aliases(),
             "recent_history": history[-10:],
             "last_execution_result": last_result.model_dump() if last_result else None,
@@ -133,6 +223,7 @@ class PromptBuilder:
         last_result: ExecutionResult | None = None,
     ) -> str:
         contract = TaskContract.from_task(task)
+        prompt_state = self._prompt_observation_state(observation.state, task)
         context = {
             "task": task,
             "task_contract": {
@@ -144,7 +235,7 @@ class PromptBuilder:
             "control_lease": lease.as_dict(),
             "capture_token": observation.capture_token,
             "target": observation.target.model_dump(),
-            "observation_state": observation.state,
+            "observation_state": prompt_state,
             "last_execution_result": last_result.model_dump() if last_result else None,
             "controller_window": {
                 "hwnd": controller_window.hwnd,
