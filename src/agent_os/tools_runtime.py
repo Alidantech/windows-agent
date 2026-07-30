@@ -7,7 +7,7 @@ from agent_os.tools import ToolExecutor as BaseToolExecutor
 
 
 class ToolExecutor(BaseToolExecutor):
-    """Resolve local form values and coordinate precise browser input."""
+    """Resolve local form values and return verified browser interaction state."""
 
     def __init__(self, *args, cancellation=None, **kwargs) -> None:
         self.cancellation = cancellation
@@ -17,6 +17,7 @@ class ToolExecutor(BaseToolExecutor):
             super().__init__(*args, **kwargs)
 
     def execute(self, decision, observation, lease, artifact_dir):
+        local_value_used = False
         if (
             decision.action in {"fill_element", "type_text"}
             and decision.text == LOCAL_VALUE_TOKEN
@@ -74,7 +75,30 @@ class ToolExecutor(BaseToolExecutor):
                     "reason": "Use the form value supplied locally by the user.",
                 }
             )
-        return super().execute(decision, observation, lease, artifact_dir)
+            local_value_used = True
+        try:
+            return super().execute(decision, observation, lease, artifact_dir)
+        finally:
+            if local_value_used:
+                local_value_vault.clear()
+
+    @staticmethod
+    def _invalid_summary(details: dict[str, object]) -> str:
+        missing = [str(item) for item in details.get("missing_required") or []]
+        invalid = []
+        for item in details.get("invalid_fields") or []:
+            if isinstance(item, dict):
+                name = str(item.get("name") or "field")
+                message = str(item.get("message") or "invalid")
+                invalid.append(f"{name}: {message}")
+            else:
+                invalid.append(str(item))
+        parts = []
+        if missing:
+            parts.append("missing required: " + ", ".join(dict.fromkeys(missing)))
+        if invalid:
+            parts.append("invalid: " + "; ".join(dict.fromkeys(invalid)))
+        return " | ".join(parts)
 
     def _browser_execute(self, decision, observation, lease, artifact_dir):
         self.browser.set_pointer_sink(self.overlay.cursor)
@@ -105,10 +129,92 @@ class ToolExecutor(BaseToolExecutor):
                     f"Browser element {decision.element_id} is stale or unavailable."
                 )
             if action == "click_element":
-                summary = self.browser.click_element(wrapper)
+                if hasattr(self.browser, "click_element_state"):
+                    summary, state = self.browser.click_element_state(wrapper, element)
+                else:
+                    summary = self.browser.click_element(wrapper)
+                    state = {}
+                invalid = self._invalid_summary(state)
+                if element.is_submit and invalid:
+                    return ExecutionResult(
+                        ok=False,
+                        summary=(
+                            f"Submission did not advance because the form is incomplete: {invalid}. "
+                            "Do not click the submit button again until these fields are resolved."
+                        ),
+                        details={
+                            "input": "browser-virtual",
+                            "element_id": decision.element_id,
+                            "coordinates": "css-pixels",
+                            **state,
+                        },
+                    )
+                if element.is_submit and state and not bool(state.get("changed")):
+                    alerts = "; ".join(str(item) for item in state.get("alerts") or [])
+                    suffix = f" Visible messages: {alerts}" if alerts else ""
+                    return ExecutionResult(
+                        ok=False,
+                        summary=(
+                            "The submit/proceed click produced no observable page or form-state "
+                            f"change. Do not repeat the click; inspect validation or ask the user.{suffix}"
+                        ),
+                        details={
+                            "input": "browser-virtual",
+                            "element_id": decision.element_id,
+                            "coordinates": "css-pixels",
+                            **state,
+                        },
+                    )
+                return ExecutionResult(
+                    ok=True,
+                    summary=summary,
+                    details={
+                        "input": "browser-virtual",
+                        "element_id": decision.element_id,
+                        "coordinates": "css-pixels",
+                        **state,
+                    },
+                )
+
+            assert decision.text is not None
+            if hasattr(self.browser, "fill_element_state"):
+                summary, state = self.browser.fill_element_state(
+                    wrapper,
+                    element,
+                    decision.text,
+                )
             else:
-                assert decision.text is not None
                 summary = self.browser.fill_element(wrapper, decision.text)
+                state = {}
+            if decision.text and state and not bool(state.get("has_value")):
+                return ExecutionResult(
+                    ok=False,
+                    summary=(
+                        f"The value did not remain in browser element {decision.element_id}. "
+                        "The control may require a selection, date picker, or different input method."
+                    ),
+                    details={
+                        "input": "browser-virtual",
+                        "element_id": decision.element_id,
+                        "coordinates": "css-pixels",
+                        **state,
+                    },
+                )
+            if state.get("valid") is False:
+                message = str(state.get("validation_message") or "the value is invalid")
+                return ExecutionResult(
+                    ok=False,
+                    summary=(
+                        f"Filled browser element {decision.element_id}, but validation rejected it: "
+                        f"{message}. Do not submit until the value is corrected."
+                    ),
+                    details={
+                        "input": "browser-virtual",
+                        "element_id": decision.element_id,
+                        "coordinates": "css-pixels",
+                        **state,
+                    },
+                )
             return ExecutionResult(
                 ok=True,
                 summary=summary,
@@ -116,6 +222,7 @@ class ToolExecutor(BaseToolExecutor):
                     "input": "browser-virtual",
                     "element_id": decision.element_id,
                     "coordinates": "css-pixels",
+                    **state,
                 },
             )
 
