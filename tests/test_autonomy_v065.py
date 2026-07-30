@@ -5,7 +5,6 @@ from datetime import datetime, timedelta, timezone
 from agent_os.autonomy import autonomy_grant, expand_user_answer, question_can_use_grant
 from agent_os.intent import IntentRouter
 
-
 EAT = timezone(timedelta(hours=3), name="EAT")
 
 

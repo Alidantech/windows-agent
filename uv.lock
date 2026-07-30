@@ -1325,7 +1325,7 @@ wheels = [
 
 [[package]]
 name = "windows-agent"
-version = "0.6.1"
+version = "0.6.5"
 source = { editable = "." }
 dependencies = [
     { name = "google-genai" },
