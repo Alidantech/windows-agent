@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.6.4
+
+- Added multiline paste support to the persistent console.
+- Pasted slash-command blocks are processed one command per line in their original order.
+- Mixed command/task blocks are dispatched line by line, while multiline prose without slash commands remains one task.
+- Enter continues to submit normally; Alt+Enter inserts a manual newline.
+- Sensitive answers remain a single response and are not split into commands.
+
 ## 0.6.3
 
 - Added verified native-select handling through Playwright `locator.select_option()`.
