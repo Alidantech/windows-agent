@@ -85,6 +85,7 @@ class Settings(BaseSettings):
 
     conflict_policy: Literal["cooperative", "exclusive"] = "cooperative"
     physical_input_policy: Literal["deny", "ask", "allow"] = "deny"
+    cursor_mode: Literal["virtual", "system", "off"] = "virtual"
     cursor_activity_guard: bool = True
     restore_user_cursor: bool = True
     move_bound_window_to_monitor: bool = True
