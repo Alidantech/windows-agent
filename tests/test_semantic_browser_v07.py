@@ -9,6 +9,7 @@ from agent_os.agent import DesktopAgent
 from agent_os.browser_semantic import BrowserController, SemanticBrowserElementRef
 from agent_os.interaction_policy import InteractionPolicy
 from agent_os.models import AgentDecision, Rectangle, UIElement
+from agent_os.prompts import PromptBuilder
 
 
 def _observation(element: UIElement):
@@ -121,6 +122,47 @@ def test_stale_captured_selector_recovers_by_live_role_and_name() -> None:
     resolved = controller._locator(ref)
     assert resolved.count() == 1
     assert resolved.labels == ["Live Performance"]
+
+
+def test_full_page_candidates_are_pruned_without_losing_required_fields() -> None:
+    actionables = [
+        {
+            "role": "link",
+            "name": f"Navigation item {index}",
+            "relation": "above",
+            "documentY": index,
+            "required": False,
+            "enabled": True,
+            "hasValue": True,
+        }
+        for index in range(180)
+    ]
+    actionables.append(
+        {
+            "role": "combobox",
+            "name": "Category",
+            "relation": "below",
+            "documentY": 1400,
+            "required": True,
+            "enabled": True,
+            "expanded": False,
+            "hasValue": False,
+        }
+    )
+    state = {
+        "semantic_page": {
+            "document": {"scrollTop": 0, "viewportHeight": 900},
+            "actionables": actionables,
+        }
+    }
+    pruned = PromptBuilder._prompt_observation_state(
+        state,
+        "complete the event form and select a category",
+    )
+    included = pruned["semantic_page"]["actionables"]
+    assert len(included) == 120
+    assert any(item["name"] == "Category" for item in included)
+    assert pruned["semantic_page"]["pruning"]["original"] == 181
 
 
 def test_ordinary_semantic_select_does_not_interrupt() -> None:
