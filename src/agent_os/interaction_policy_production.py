@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from agent_os.confirmation_policy import ConfirmationMode, ConfirmationPolicy
+from agent_os.confirmation_policy import ConfirmationMode
+from agent_os.confirmation_policy_v2 import ConfirmationPolicy
 from agent_os.interaction_policy import InteractionPolicy as BaseInteractionPolicy
 from agent_os.interaction_policy import UserIntervention
 
