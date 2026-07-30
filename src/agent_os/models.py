@@ -135,6 +135,17 @@ class UIElement(BaseModel):
     center_x: int = Field(ge=0, le=1000)
     center_y: int = Field(ge=0, le=1000)
     source: Literal["uia", "browser"] = "uia"
+    tag: str | None = None
+    input_type: str | None = None
+    placeholder: str | None = None
+    href: str | None = None
+    editable: bool | None = None
+    required: bool | None = None
+    readonly: bool | None = None
+    checked: bool | None = None
+    selected: bool | None = None
+    focused: bool = False
+    receives_events: bool | None = None
 
 
 class ExecutionResult(BaseModel):
