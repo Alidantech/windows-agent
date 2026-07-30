@@ -6,8 +6,8 @@ from contextlib import suppress
 from agent_os.browser_precision_v4 import BrowserController
 from agent_os.overlay import NullOverlay
 from agent_os.overlay_edges import EdgeOverlay
-from agent_os.runtime_v09 import DesktopAgent as BaseDesktopAgent
-from agent_os.runtime_v09 import RunOutcome
+from agent_os.runtime_v08 import DesktopAgent as BaseDesktopAgent
+from agent_os.runtime_v08 import RunOutcome
 
 
 class DesktopAgent(BaseDesktopAgent):
